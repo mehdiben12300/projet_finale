@@ -977,48 +977,64 @@ export const TaskDetailScreen = ({ route, navigation }) => {
           <View style={styles.cardHeaderRow}>
             <View style={styles.cardTitleWithIcon}>
               <Ionicons name="chatbubbles-outline" size={20} color="#0284C7" />
-              <Text style={styles.cardSectionTitle}>Discussions ({comments.length})</Text>
+              <Text style={styles.cardSectionTitle}>
+                {isNonAssignee ? 'Discussions' : `Discussions (${comments.length})`}
+              </Text>
             </View>
+            {isNonAssignee && (
+              <View style={styles.lockedPillBadge}>
+                <Ionicons name="lock-closed" size={11} color="#DC2626" />
+                <Text style={styles.lockedPillBadgeText}>Fermé</Text>
+              </View>
+            )}
           </View>
 
-          {comments.map((c) => (
-            <View key={c.id} style={styles.commentItemBox}>
-              <View style={styles.commentHeader}>
-                <Text style={styles.commentAuthor}>{c.author}</Text>
-                <Text style={styles.commentTime}>{c.createdAt}</Text>
+          {isNonAssignee ? (
+            /* Pour le non-assigné : LE CHAT EST COMPLÈTEMENT MASQUÉ ET FERMÉ */
+            <View style={styles.restrictedCommentBox}>
+              <Ionicons name="lock-closed" size={26} color="#64748B" />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.restrictedTitle}>Chat confidentiel fermé</Text>
+                <Text style={styles.restrictedText}>
+                  Vous n'êtes pas assigné(e) à cette tâche par {task.author}. Le fil de discussion et les messages sont complètement masqués et inaccessibles.
+                </Text>
               </View>
-              <Text style={styles.commentText}>{c.text}</Text>
-            </View>
-          ))}
-
-          {/* Saisie commentaire : OUVERTE pour créateur et assignés, VERROUILLÉE pour non-assignés */}
-          {canComment ? (
-            <View style={styles.commentInputRow}>
-              <TextInput
-                style={styles.commentTextInput}
-                placeholder={`Commenter en tant que ${currentUser.name}...`}
-                placeholderTextColor="#94A3B8"
-                value={commentText}
-                onChangeText={setCommentText}
-              />
-              <TouchableOpacity
-                style={styles.commentSendBtn}
-                onPress={handlePostComment}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="send" size={16} color="#FFFFFF" />
-              </TouchableOpacity>
             </View>
           ) : (
-            <View style={styles.restrictedCommentBox}>
-              <Ionicons name="lock-closed" size={20} color="#64748B" />
-              <View style={{ flex: 1, marginLeft: 8 }}>
-                <Text style={[styles.restrictedTitle, { color: '#334155' }]}>
-                  Discussion réservée aux membres assignés
+            /* Pour le Créateur et les Membres Assignés : Historique et saisie */
+            <View>
+              {comments.length === 0 ? (
+                <Text style={styles.cardEmptyItalicText}>
+                  Aucun message pour le moment. Lancez la discussion !
                 </Text>
-                <Text style={[styles.restrictedText, { color: '#64748B' }]}>
-                  Vous n'êtes pas assigné(e) à cette tâche par {task.author}. La discussion est verrouillée en mode consultation.
-                </Text>
+              ) : (
+                comments.map((c) => (
+                  <View key={c.id} style={styles.commentItemBox}>
+                    <View style={styles.commentHeader}>
+                      <Text style={styles.commentAuthor}>{c.author}</Text>
+                      <Text style={styles.commentTime}>{c.createdAt}</Text>
+                    </View>
+                    <Text style={styles.commentText}>{c.text}</Text>
+                  </View>
+                ))
+              )}
+
+              {/* Saisie commentaire */}
+              <View style={styles.commentInputRow}>
+                <TextInput
+                  style={styles.commentTextInput}
+                  placeholder={`Commenter en tant que ${currentUser.name}...`}
+                  placeholderTextColor="#94A3B8"
+                  value={commentText}
+                  onChangeText={setCommentText}
+                />
+                <TouchableOpacity
+                  style={styles.commentSendBtn}
+                  onPress={handlePostComment}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="send" size={16} color="#FFFFFF" />
+                </TouchableOpacity>
               </View>
             </View>
           )}
@@ -1701,6 +1717,20 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  lockedPillBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    gap: 4,
+  },
+  lockedPillBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#DC2626',
   },
   restrictedCommentBox: {
     flexDirection: 'row',
