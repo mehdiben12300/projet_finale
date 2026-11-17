@@ -23,9 +23,9 @@ export const TaskListScreen = ({ navigation }) => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('Toutes'); // 'Toutes' | 'À faire' | 'Terminées'
-  const [scopeFilter, setScopeFilter] = useState('all'); // 'all' | 'mine' | 'invited'
+  const [scopeFilter, setScopeFilter] = useState('all'); // 'all' | 'mine' | 'assigned'
 
-  // Comptage par catégorie pour l'utilisateur connecté
+  // Comptage par catégorie pour l'utilisateur connecté (Créateur vs Assigné)
   const myCreatedCount = useMemo(() => {
     if (!currentUser) return 0;
     return tasks.filter(
@@ -33,7 +33,7 @@ export const TaskListScreen = ({ navigation }) => {
     ).length;
   }, [tasks, currentUser]);
 
-  const myInvitedCount = useMemo(() => {
+  const myAssignedCount = useMemo(() => {
     if (!currentUser) return 0;
     return tasks.filter(
       (t) =>
@@ -46,11 +46,11 @@ export const TaskListScreen = ({ navigation }) => {
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
-      // Filtre appartenance (Toutes vs Créées par moi vs Invité)
+      // Filtre appartenance (Toutes vs Créées par moi vs Assignées à moi)
       if (currentUser) {
         const isAuthor =
           task.author && task.author.toLowerCase() === currentUser.name.toLowerCase();
-        const isInvited =
+        const isAssigned =
           task.observers &&
           task.observers.some(
             (o) => o.name && o.name.toLowerCase() === currentUser.name.toLowerCase()
@@ -59,7 +59,7 @@ export const TaskListScreen = ({ navigation }) => {
         if (scopeFilter === 'mine' && !isAuthor) {
           return false;
         }
-        if (scopeFilter === 'invited' && !isInvited) {
+        if (scopeFilter === 'assigned' && !isAssigned) {
           return false;
         }
       }
@@ -191,7 +191,7 @@ export const TaskListScreen = ({ navigation }) => {
         {/* Statistiques */}
         <StatsOverview stats={stats} />
 
-        {/* Bascule Portée : Toutes vs Mes Créations vs Invité (Collab) */}
+        {/* Bascule Portée : Toutes vs Mes Créations vs Assignées à moi */}
         <View style={styles.scopeTabsContainer}>
           <TouchableOpacity
             style={[styles.scopeTab, scopeFilter === 'all' && styles.scopeTabActive]}
@@ -234,22 +234,22 @@ export const TaskListScreen = ({ navigation }) => {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.scopeTab, scopeFilter === 'invited' && styles.scopeTabActive]}
-            onPress={() => setScopeFilter('invited')}
+            style={[styles.scopeTab, scopeFilter === 'assigned' && styles.scopeTabActive]}
+            onPress={() => setScopeFilter('assigned')}
             activeOpacity={0.7}
           >
             <Ionicons
-              name="chatbubbles-outline"
+              name="people-outline"
               size={13}
-              color={scopeFilter === 'invited' ? '#0284C7' : '#64748B'}
+              color={scopeFilter === 'assigned' ? '#0284C7' : '#64748B'}
             />
             <Text
               style={[
                 styles.scopeTabText,
-                scopeFilter === 'invited' && styles.scopeTabTextActive,
+                scopeFilter === 'assigned' && styles.scopeTabTextActive,
               ]}
             >
-              Invité ({myInvitedCount})
+              Assignées ({myAssignedCount})
             </Text>
           </TouchableOpacity>
         </View>
@@ -310,9 +310,9 @@ export const TaskListScreen = ({ navigation }) => {
             <View style={styles.emptyContainer}>
               <Ionicons name="clipboard-outline" size={48} color="#CBD5E1" />
               <Text style={styles.emptyText}>Aucune tâche trouvée</Text>
-              {scopeFilter === 'invited' && (
+              {scopeFilter === 'assigned' && (
                 <Text style={{ fontSize: 12, color: '#94A3B8', marginTop: 4 }}>
-                  {currentUser?.name} n'est invité sur aucune tâche dans cette vue.
+                  {currentUser?.name} n'est assigné(e) à aucune tâche dans cette vue.
                 </Text>
               )}
             </View>

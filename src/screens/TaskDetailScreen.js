@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -60,9 +60,9 @@ export const TaskDetailScreen = ({ route, navigation }) => {
 
   const task = getTask(taskId);
 
-  // États pour les observateurs
+  // États pour les observateurs / assignés
   const [followerName, setFollowerName] = useState('');
-  const [selectedRole, setSelectedRole] = useState('observer'); // 'observer' | 'assignee' | 'responsible'
+  const [selectedRole, setSelectedRole] = useState('assignee'); // Tous les membres sont 'assignee'
 
   // États pour la position GPS
   const [capturingGps, setCapturingGps] = useState(false);
@@ -80,6 +80,9 @@ export const TaskDetailScreen = ({ route, navigation }) => {
 
   // Modal rapide réglages (bouton roue dentée ⚙️)
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+  // Statut de proximité GPS
+  const [proximityStatus, setProximityStatus] = useState(null);
 
   if (!task) {
     return (
@@ -102,7 +105,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
   const observers = task.observers || [];
   const comments = task.comments || [];
 
-  // --- SYSTÈME DE PERMISSIONS STRICT (3 NIVEAUX) ---
+  // --- 3 RÔLES STRICTS DU SYSTÈME (Créateur / Assigné / Non-assigné) ---
   // 1. Est le créateur / auteur de la tâche (Possède tous les droits réels) :
   const isCreator = Boolean(
     task.author &&
@@ -111,8 +114,8 @@ export const TaskDetailScreen = ({ route, navigation }) => {
       task.author.toLowerCase() === currentUser.name.toLowerCase()
   );
 
-  // 2. Est un collaborateur invité / assigné à cette tâche :
-  const isInvited = Boolean(
+  // 2. Est un collaborateur assigné à cette tâche :
+  const isAssignee = Boolean(
     currentUser &&
       currentUser.name &&
       observers.some(
@@ -121,10 +124,10 @@ export const TaskDetailScreen = ({ route, navigation }) => {
   );
 
   // 3. Simple visiteur non-assigné :
-  const isVisitor = !isCreator && !isInvited;
+  const isNonAssignee = !isCreator && !isAssignee;
 
-  // L'auteur et les collaborateurs assignés ont le droit de participer à la discussion :
-  const canComment = isCreator || isInvited;
+  // L'auteur et les membres assignés ont le droit de participer à la discussion :
+  const canComment = isCreator || isAssignee;
 
   // Helper pour afficher le refus d'autorisation
   const notifyPermissionDenied = (actionName, requiredRole = `le créateur (${task.author})`) => {
@@ -135,6 +138,35 @@ export const TaskDetailScreen = ({ route, navigation }) => {
       Alert.alert('Accès refusé', msg);
     }
   };
+
+  // --- DÉTECTION GPS AUTOMATIQUE POUR L'ASSIGNÉ ---
+  // Dès que l'assigné ouvre la tâche, l'application vérifie sa position par rapport au lieu fixé par le créateur
+  useEffect(() => {
+    if (isAssignee && task && task.locationReminder) {
+      const detectArrivalOnLoad = async () => {
+        try {
+          const currentPos = await locationService.getCurrentLocation();
+          const { isNearby, distanceMeters } = locationService.checkProximity(
+            currentPos,
+            task.locationReminder,
+            500
+          );
+          setProximityStatus({ isNearby, distanceMeters });
+
+          // Si l'assigné est dans le rayon de 500m, déclencher l'alerte d'arrivée
+          if (isNearby) {
+            await notificationService.notifyLocationArrival({
+              taskTitle: task.title,
+              locationName: task.locationReminder.locationName,
+            });
+          }
+        } catch (e) {
+          console.log('Vérification GPS silencieuse:', e.message);
+        }
+      };
+      detectArrivalOnLoad();
+    }
+  }, [task?.id, isAssignee]);
 
   // --- 1. PIÈCES JOINTES (Photo & Fichier) ---
   const handleLaunchCamera = async () => {
@@ -242,7 +274,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
     }
   };
 
-  // --- 2. OBSERVATEURS (Suiveurs) ---
+  // --- 2. ASSIGNATION DES COLLABORATEURS ---
   const handleAddObserver = async () => {
     if (!isCreator) {
       notifyPermissionDenied('assigner des collaborateurs');
@@ -251,13 +283,13 @@ export const TaskDetailScreen = ({ route, navigation }) => {
 
     const nameToAdd = followerName.trim();
     if (!nameToAdd) {
-      Alert.alert('Erreur', 'Veuillez saisir le nom du suiveur.');
+      Alert.alert('Erreur', 'Veuillez saisir le nom du collaborateur.');
       return;
     }
 
     await addObserver(task.id, {
       name: nameToAdd,
-      role: selectedRole,
+      role: 'assignee', // Rôle unifié : Assigné
     });
 
     setFollowerName('');
@@ -312,7 +344,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
     await updateTask(task.id, { locationReminder: null });
   };
 
-  // --- VÉRIFICATION & SIMULATION DE PROXIMITÉ GPS (POUR CRÉATEUR ET ASSIGNÉS) ---
+  // --- VÉRIFICATION & SIMULATION DE PROXIMITÉ GPS ---
   const handleCheckProximity = async () => {
     if (!task.locationReminder) return;
     setCheckingProximity(true);
@@ -324,13 +356,15 @@ export const TaskDetailScreen = ({ route, navigation }) => {
         500
       );
 
+      setProximityStatus({ isNearby, distanceMeters });
+
       if (isNearby) {
         await notificationService.notifyLocationArrival({
           taskTitle: task.title,
           locationName: task.locationReminder.locationName,
         });
       } else {
-        const msg = `Vous êtes à ${distanceMeters} mètres du lieu prévu (${task.locationReminder.locationName}). Le rappel automatique se déclenchera à moins de 500m.`;
+        const msg = `Vous êtes à ${distanceMeters} mètres du lieu prévu (${task.locationReminder.locationName}). L'alerte automatique d'arrivée se déclenchera à moins de 500m.`;
         if (Platform.OS === 'web') {
           window.alert(`📡 Position GPS :\n${msg}`);
         } else {
@@ -389,7 +423,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
   const handlePostComment = async () => {
     if (!commentText.trim()) return;
 
-    if (isVisitor) {
+    if (isNonAssignee) {
       notifyPermissionDenied('publier un commentaire', 'les collaborateurs assignés');
       return;
     }
@@ -512,26 +546,26 @@ export const TaskDetailScreen = ({ route, navigation }) => {
               </Text>
             </View>
 
-            {/* Statut de l'utilisateur sur cette tâche */}
+            {/* Statut strict de l'utilisateur sur cette tâche */}
             <View style={styles.userRoleOnTaskRow}>
               <Ionicons
-                name={isCreator ? 'key' : isInvited ? 'chatbubbles' : 'eye'}
+                name={isCreator ? 'key' : isAssignee ? 'chatbubbles' : 'eye'}
                 size={14}
-                color={isCreator ? '#0284C7' : isInvited ? '#16A34A' : '#64748B'}
+                color={isCreator ? '#0284C7' : isAssignee ? '#16A34A' : '#64748B'}
               />
               <Text
                 style={[
                   styles.userRoleOnTaskText,
                   isCreator && { color: '#0284C7', fontWeight: '700' },
-                  isInvited && { color: '#16A34A', fontWeight: '700' },
-                  isVisitor && { color: '#64748B', fontWeight: '600' },
+                  isAssignee && { color: '#16A34A', fontWeight: '700' },
+                  isNonAssignee && { color: '#64748B', fontWeight: '600' },
                 ]}
               >
                 {isCreator
-                  ? 'Vous êtes le créateur (Droits complets : modification activée)'
-                  : isInvited
-                  ? `Assigné par ${task.author} (Discussion active • Fichiers en lecture seule)`
-                  : `Consultation seule (Créée par ${task.author} • Non assigné)`}
+                  ? '👑 Vous êtes le créateur (Droits complets : modification activée)'
+                  : isAssignee
+                  ? `🤝 Vous êtes assigné(e) à cette tâche (Discussion active • Fichiers protégés)`
+                  : `👁️ Non-assigné (Consultation seule • Discussion fermée)`}
               </Text>
             </View>
           </View>
@@ -654,7 +688,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
             <Text style={styles.cardEmptyItalicText}>
               {observers.length === 0
                 ? 'Aucun observateur. Ajoutez un suiveur.'
-                : 'Collaborateurs assignés à cette tâche :'}
+                : 'Membres assignés à cette tâche :'}
             </Text>
 
             {/* Ligne saisie observateur + bouton Ajouter */}
@@ -675,7 +709,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
               </TouchableOpacity>
             </View>
 
-            {/* Rôles en dessous : observer | assignee | responsible */}
+            {/* Rôles en dessous : observer | assignee | responsible (Conforme au visuel) */}
             <View style={styles.roleChipsRow}>
               {[
                 { id: 'observer', label: 'observer' },
@@ -698,10 +732,10 @@ export const TaskDetailScreen = ({ route, navigation }) => {
               })}
             </View>
 
-            {/* Invitations rapides par clic */}
+            {/* Invitations rapides par clic pour le créateur */}
             <View style={{ marginTop: 4, marginBottom: 8 }}>
               <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>
-                Sélection rapide des utilisateurs :
+                Assigner rapidement un utilisateur :
               </Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                 {availableUsers
@@ -719,13 +753,13 @@ export const TaskDetailScreen = ({ route, navigation }) => {
                         ]}
                         onPress={async () => {
                           if (!isCreator) {
-                            notifyPermissionDenied('modifier les collaborateurs assignés');
+                            notifyPermissionDenied('modifier les membres assignés');
                             return;
                           }
                           if (alreadyInvited) {
                             await removeObserver(task.id, user.name);
                           } else {
-                            await addObserver(task.id, { name: user.name, role: selectedRole });
+                            await addObserver(task.id, { name: user.name, role: 'assignee' });
                           }
                         }}
                         activeOpacity={0.7}
@@ -746,7 +780,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
             </View>
           </View>
 
-          {/* Liste des observateurs déjà ajoutés */}
+          {/* Liste des observateurs déjà ajoutés avec badge Assigné */}
           {observers.length > 0 && (
             <View style={styles.observersChipsList}>
               {observers.map((obs) => (
@@ -754,7 +788,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
                   <Ionicons name="person-circle" size={16} color="#0284C7" />
                   <Text style={styles.observerBadgeName}>{obs.name}</Text>
                   <View style={styles.roleSubBadge}>
-                    <Text style={styles.roleSubBadgeText}>{obs.role || 'observer'}</Text>
+                    <Text style={styles.roleSubBadgeText}>Assigné</Text>
                   </View>
                   <TouchableOpacity onPress={() => handleRemoveObserver(obs.id || obs.name)}>
                     <Ionicons name="close" size={14} color="#64748B" />
@@ -834,8 +868,18 @@ export const TaskDetailScreen = ({ route, navigation }) => {
                 </TouchableOpacity>
               </View>
 
-              {/* Boutons de test de détection de proximité : accessibles au créateur et aux assignés */}
-              {!isVisitor && (
+              {/* Bandeau d'information GPS pour le membre assigné */}
+              {isAssignee && (
+                <View style={styles.gpsActiveNoticeBox}>
+                  <Ionicons name="navigate" size={16} color="#16A34A" />
+                  <Text style={styles.gpsActiveNoticeText}>
+                    📍 Détection GPS active : l'application vous alerte automatiquement dès que vous arrivez à destination (moins de 500m).
+                  </Text>
+                </View>
+              )}
+
+              {/* Boutons de test de détection de proximité (Pour Créateur et Assigné) */}
+              {!isNonAssignee && (
                 <View style={styles.proximityButtonsRow}>
                   <TouchableOpacity
                     style={styles.checkProximityBtn}
@@ -973,7 +1017,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
                   Discussion réservée aux membres assignés
                 </Text>
                 <Text style={[styles.restrictedText, { color: '#64748B' }]}>
-                  Vous ne faites pas partie des collaborateurs assignés à cette tâche par {task.author}. La discussion est verrouillée en mode consultation.
+                  Vous n'êtes pas assigné(e) à cette tâche par {task.author}. La discussion est verrouillée en mode consultation.
                 </Text>
               </View>
             </View>
@@ -1485,7 +1529,7 @@ const styles = StyleSheet.create({
   },
   roleSubBadgeText: {
     fontSize: 9,
-    color: '#64748B',
+    color: '#0284C7',
     fontWeight: '700',
     textTransform: 'uppercase',
   },
@@ -1515,6 +1559,23 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+  },
+  gpsActiveNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FDF4',
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    marginTop: 8,
+    gap: 6,
+  },
+  gpsActiveNoticeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#15803D',
+    flex: 1,
   },
   proximityButtonsRow: {
     flexDirection: 'row',

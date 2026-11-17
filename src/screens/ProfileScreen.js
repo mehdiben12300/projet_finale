@@ -47,7 +47,7 @@ export const ProfileScreen = () => {
   };
 
   const handleResetData = () => {
-    const question = 'Voulez-vous restaurer les 4 tâches de démonstration complètes (multi-utilisateurs & permissions) ?';
+    const question = 'Voulez-vous restaurer les 4 tâches de démonstration complètes (Créateur, Assigné, Non-assigné) ?';
     if (Platform.OS === 'web') {
       if (window.confirm(question)) {
         performReset();
@@ -69,8 +69,8 @@ export const ProfileScreen = () => {
     { icon: 'document-text', color: '#6366F1', title: 'Fichiers locaux & PDF', desc: 'Sélection de documents avec expo-document-picker & prévisualisation' },
     { icon: 'cloud-download', color: '#059669', title: 'Appel API Fichiers', desc: 'Téléchargement de documents distants via expo-file-system' },
     { icon: 'alarm', color: '#D97706', title: 'Rappels Date & Heure', desc: 'Notifications locales programmées avec expo-notifications' },
-    { icon: 'location', color: '#DC2626', title: 'Carte OpenStreetMap & GPS', desc: 'Sélection interactive sur Leaflet & calcul de proximité GPS' },
-    { icon: 'chatbubbles', color: '#8B5CF6', title: '3 Niveaux de Permissions', desc: 'Créateur (total), Invité (chat/lecture), Visiteur (lecture seule)' },
+    { icon: 'location', color: '#DC2626', title: 'Carte & Détection GPS', desc: 'Notification automatique d\'arrivée pour le membre assigné (< 500m)' },
+    { icon: 'people', color: '#8B5CF6', title: '3 Rôles Stricts (RBAC)', desc: 'Créateur (total), Assigné (chat & alerte GPS), Non-assigné (lecture seule)' },
   ];
 
   return (
@@ -87,7 +87,7 @@ export const ProfileScreen = () => {
             <Text style={styles.roleBadgeText}>{currentUser?.role || 'Collaborateur'}</Text>
           </View>
           <Text style={styles.userSubText}>
-            Connecté pour tester les permissions et fonctionnalités
+            Connecté pour tester les 3 rôles et la détection d'arrivée GPS
           </Text>
         </View>
 
@@ -95,7 +95,7 @@ export const ProfileScreen = () => {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>👥 Changer d'utilisateur (Test des Rôles)</Text>
           <Text style={styles.cardSubtitle}>
-            Sélectionnez un profil pour voir comment l'application s'adapte selon ses droits :
+            Sélectionnez un profil pour voir comment l'application adapte ses droits (Créateur / Assigné / Non-assigné) :
           </Text>
           <View style={{ gap: 8, marginTop: 8 }}>
             {availableUsers.map((user) => {
@@ -113,10 +113,10 @@ export const ProfileScreen = () => {
                       {user.name}
                     </Text>
                     <Text style={styles.userOptionDesc}>
-                      {user.name === 'Mehdi' && 'Créateur de "Debug obs" • Invité sur Tâche 2 & 3'}
-                      {user.name === 'Professeur' && 'Créateur de "Rapport" • Invité sur Tâche 1'}
-                      {user.name === 'Sarah' && 'Créateur de "Test Capteurs" • Invité sur Tâche 1 & 4'}
-                      {user.name === 'Dr. Ben Ali' && 'Créateur de "Audit Sécurité" • Invité sur Tâche 3'}
+                      {user.name === 'Mehdi' && 'Créateur de "Debug obs" • Assigné sur Tâche 2 & 3'}
+                      {user.name === 'Professeur' && 'Créateur de "Rapport" • Assigné sur Tâche 1'}
+                      {user.name === 'Sarah' && 'Créateur de "Test Capteurs" • Assigné sur Tâche 1 & 4'}
+                      {user.name === 'Dr. Ben Ali' && 'Créateur de "Audit Sécurité" • Assigné sur Tâche 3'}
                     </Text>
                   </View>
                   {isSelected ? (
@@ -149,9 +149,9 @@ export const ProfileScreen = () => {
           </View>
         </View>
 
-        {/* Synthèse des 6 fonctionnalités demandées */}
+        {/* Synthèse des fonctionnalités */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>⚙️ 6 Fonctionnalités implémentées</Text>
+          <Text style={styles.cardTitle}>⚙️ 6 Fonctionnalités validées</Text>
           <View style={{ gap: 12, marginTop: 10 }}>
             {featuresList.map((f, idx) => (
               <View key={idx} style={styles.featureItem}>

@@ -27,14 +27,14 @@ export const TaskCard = ({ task, currentUser, onPress }) => {
 
   const commentsCount = (task.comments && task.comments.length) || 0;
 
-  // Calcul du rôle de l'utilisateur connecté sur cette tâche
+  // Calcul du rôle strict de l'utilisateur connecté sur cette tâche (3 Rôles uniques)
   const isCreator = Boolean(
     currentUser &&
       task.author &&
       currentUser.name.toLowerCase() === task.author.toLowerCase()
   );
 
-  const isInvited = Boolean(
+  const isAssignee = Boolean(
     currentUser &&
       task.observers &&
       task.observers.some(
@@ -62,7 +62,7 @@ export const TaskCard = ({ task, currentUser, onPress }) => {
           )}
         </View>
 
-        {/* Badges Priorité et Statut */}
+        {/* Badges Priorité, Statut et Rôle */}
         <View style={styles.badgeRow}>
           <View style={[styles.badge, { backgroundColor: priorityColor.bg }]}>
             <Text style={[styles.badgeText, { color: priorityColor.text }]}>
@@ -76,14 +76,14 @@ export const TaskCard = ({ task, currentUser, onPress }) => {
             </Text>
           </View>
 
-          {/* Badge Rôle de l'utilisateur actif */}
+          {/* Badge Rôle strict de l'utilisateur actif */}
           {currentUser && (
             <View
               style={[
                 styles.badge,
                 isCreator
                   ? { backgroundColor: '#E0F2FE' }
-                  : isInvited
+                  : isAssignee
                   ? { backgroundColor: '#DCFCE7' }
                   : { backgroundColor: '#F1F5F9' },
               ]}
@@ -94,14 +94,14 @@ export const TaskCard = ({ task, currentUser, onPress }) => {
                   {
                     color: isCreator
                       ? '#0284C7'
-                      : isInvited
+                      : isAssignee
                       ? '#16A34A'
                       : '#64748B',
                     fontWeight: '700',
                   },
                 ]}
               >
-                {isCreator ? '👑 Créateur' : isInvited ? '🤝 Invité' : '👁️ Visiteur'}
+                {isCreator ? '👑 Créateur' : isAssignee ? '🤝 Assigné' : '👁️ Non-assigné'}
               </Text>
             </View>
           )}
@@ -113,7 +113,7 @@ export const TaskCard = ({ task, currentUser, onPress }) => {
             <View style={[styles.featurePill, { backgroundColor: '#F8FAFC' }]}>
               <Ionicons name="person-outline" size={12} color="#0284C7" />
               <Text style={[styles.featurePillText, { color: '#0369A1' }]}>
-                Par {task.author}
+                Créé par {task.author}
               </Text>
             </View>
           )}
@@ -122,7 +122,7 @@ export const TaskCard = ({ task, currentUser, onPress }) => {
             <View style={[styles.featurePill, { backgroundColor: '#F5F3FF' }]}>
               <Ionicons name="people" size={12} color="#7C3AED" />
               <Text style={[styles.featurePillText, { color: '#6D28D9' }]}>
-                {task.observers.length} invité{task.observers.length > 1 ? 's' : ''}
+                {task.observers.length} assigné{task.observers.length > 1 ? 's' : ''}
               </Text>
             </View>
           )}
