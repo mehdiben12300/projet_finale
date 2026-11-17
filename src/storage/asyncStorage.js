@@ -27,7 +27,7 @@ export const initialTasks = [
     priority: 'Élevée',
     status: 'À faire',
     createdAt: '16/11/2026',
-    author: 'Chef de projet',
+    author: 'Professeur',
     imageUri: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=600&q=80',
     attachedFile: {
       name: 'Plan_presentation.pdf',
@@ -44,8 +44,8 @@ export const initialTasks = [
       radius: 500,
     },
     observers: [
-      { id: 'obs_1', name: 'Professeur', role: 'responsible', addedAt: '16/11/2026' },
-      { id: 'obs_2', name: 'Mehdi', role: 'assignee', addedAt: '16/11/2026' },
+      { id: 'obs_1', name: 'Mehdi', role: 'assignee', addedAt: '16/11/2026' },
+      { id: 'obs_2', name: 'Sarah', role: 'observer', addedAt: '16/11/2026' },
     ],
     allowedCommenters: ['Professeur', 'Mehdi', 'Dr. Ben Ali'],
     comments: [

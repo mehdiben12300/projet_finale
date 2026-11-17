@@ -107,28 +107,31 @@ export const TaskDetailScreen = ({ route, navigation }) => {
     allowedCommenters.includes(currentUser.name) ||
     (task.author && task.author === currentUser.name);
 
-  // --- RÔLES ET DROITS D'ASSIGNATION ---
-  // 1. Est créateur de la tâche :
-  const isAuthor =
-    task.author && currentUser.name && task.author.toLowerCase() === currentUser.name.toLowerCase();
-
-  // 2. Est assigné ou responsable dans la liste des observateurs :
-  const userObserverRecord = observers.find(
-    (obs) => obs.name && obs.name.toLowerCase() === currentUser.name.toLowerCase()
+  // --- SYSTÈME DE PERMISSIONS (CRÉATEUR / INVITÉS / NON-INVITÉS) ---
+  // 1. Est le créateur / auteur de la tâche (A tous les droits) :
+  const isCreator = Boolean(
+    task.author && currentUser.name && task.author.toLowerCase() === currentUser.name.toLowerCase()
   );
 
-  const isAssigneeOrResponsible =
-    userObserverRecord &&
-    (userObserverRecord.role === 'assignee' || userObserverRecord.role === 'responsible');
+  // 2. Est un collaborateur invité sur la tâche (Discussion autorisée, fichiers en lecture seule) :
+  const isInvited = Boolean(
+    observers.some((obs) => obs.name && obs.name.toLowerCase() === currentUser.name.toLowerCase())
+  );
 
-  // Droit de modifier la tâche et d'ajouter/supprimer des fichiers :
-  const canEditTask = isAuthor || isAssigneeOrResponsible;
+  // 3. Simple visiteur non-invité (Consultation seule, commentaires désactivés) :
+  const isVisitor = !isCreator && !isInvited;
+
+  // Seul le créateur a le droit de modifier la tâche, les fichiers, la carte et les rappels :
+  const canEditTask = isCreator;
+
+  // Le créateur et les invités peuvent participer aux discussions / commentaires :
+  const canComment = isCreator || isInvited;
 
   // --- 1. PIÈCES JOINTES (Photo & Fichier) ---
   const handleLaunchCamera = async () => {
     setShowPhotoModal(false);
     if (!canEditTask) {
-      const msg = "Action refusée : Seuls les membres assignés (assignee ou responsible) ou le créateur peuvent ajouter des photos.";
+      const msg = `Action refusée : Seul le créateur de cette tâche (${task.author}) a le droit d'ajouter des photos.`;
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('Accès refusé', msg);
       return;
@@ -158,7 +161,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
   const handleLaunchGallery = async () => {
     setShowPhotoModal(false);
     if (!canEditTask) {
-      const msg = "Action refusée : Seuls les membres assignés (assignee ou responsible) ou le créateur peuvent ajouter des photos.";
+      const msg = `Action refusée : Seul le créateur de cette tâche (${task.author}) a le droit d'ajouter des photos.`;
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('Accès refusé', msg);
       return;
@@ -179,7 +182,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
 
   const handleAddPhoto = () => {
     if (!canEditTask) {
-      const msg = "Action refusée : Seuls les membres assignés à cette tâche ont le droit d'ajouter des photos.";
+      const msg = `Action refusée : Seul le créateur de cette tâche (${task.author}) a le droit d'ajouter des photos.`;
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('Accès refusé', msg);
       return;
@@ -189,7 +192,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
 
   const handleAddFile = async () => {
     if (!canEditTask) {
-      const msg = "Action refusée : Seuls les membres assignés à cette tâche ont le droit d'ajouter des fichiers.";
+      const msg = `Action refusée : Seul le créateur de cette tâche (${task.author}) a le droit d'ajouter des fichiers.`;
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('Accès refusé', msg);
       return;
@@ -216,7 +219,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
 
   const handleRemovePhoto = async () => {
     if (!canEditTask) {
-      const msg = "Action refusée : Seuls les membres assignés peuvent supprimer des pièces jointes.";
+      const msg = `Action refusée : Seul le créateur de cette tâche (${task.author}) peut supprimer des pièces jointes.`;
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('Accès refusé', msg);
       return;
@@ -226,7 +229,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
 
   const handleRemoveFile = async () => {
     if (!canEditTask) {
-      const msg = "Action refusée : Seuls les membres assignés peuvent supprimer des pièces jointes.";
+      const msg = `Action refusée : Seul le créateur de cette tâche (${task.author}) peut supprimer des pièces jointes.`;
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('Accès refusé', msg);
       return;
@@ -245,7 +248,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
   // --- 2. OBSERVATEURS (Suiveurs) ---
   const handleAddObserver = async () => {
     if (!canEditTask) {
-      const msg = "Action refusée : Seuls les membres assignés ou le créateur peuvent ajouter des observateurs.";
+      const msg = `Action refusée : Seul le créateur de cette tâche (${task.author}) a le droit d'inviter des collaborateurs.`;
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('Accès refusé', msg);
       return;
@@ -268,7 +271,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
   // --- 3. POSITIONS GPS (Capturer) ---
   const handleCaptureGps = async () => {
     if (!canEditTask) {
-      const msg = "Action refusée : Seuls les membres assignés ou le créateur peuvent modifier la position géographique.";
+      const msg = `Action refusée : Seul le créateur de cette tâche (${task.author}) a le droit de modifier la position géographique.`;
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('Accès refusé', msg);
       return;
@@ -463,32 +466,31 @@ export const TaskDetailScreen = ({ route, navigation }) => {
               </Text>
             </View>
 
-            {/* Statut d'assignation de l'utilisateur connecté */}
+            {/* Statut de l'utilisateur sur cette tâche */}
             <View style={styles.userRoleOnTaskRow}>
               <Ionicons
-                name={canEditTask ? 'shield-checkmark' : 'lock-closed'}
-                size={13}
-                color={canEditTask ? '#0284C7' : '#94A3B8'}
+                name={isCreator ? 'key' : isInvited ? 'chatbubbles' : 'eye'}
+                size={14}
+                color={isCreator ? '#0284C7' : isInvited ? '#16A34A' : '#64748B'}
               />
               <Text
                 style={[
                   styles.userRoleOnTaskText,
-                  canEditTask && { color: '#0284C7', fontWeight: '700' },
+                  isCreator && { color: '#0284C7', fontWeight: '700' },
+                  isInvited && { color: '#16A34A', fontWeight: '700' },
                 ]}
               >
-                {isAuthor
-                  ? 'Créateur (Assigné - Droits complets)'
-                  : isAssigneeOrResponsible
-                  ? `Assigné (${userObserverRecord.role} - Droits complets)`
-                  : userObserverRecord
-                  ? 'Observateur (Lecture seule)'
-                  : 'Non assigné (Lecture seule)'}
+                {isCreator
+                  ? 'Vous êtes le créateur (Droits complets : fichiers, carte, rappels)'
+                  : isInvited
+                  ? `Invité par ${task.author} (Discussion autorisée • Fichiers en lecture seule)`
+                  : `Consultation seule (Créée par ${task.author} • Non invité)`}
               </Text>
             </View>
           </View>
 
-          {/* Bouton flottant bleu roue dentée ⚙️ (visible uniquement pour les membres assignés) */}
-          {canEditTask && (
+          {/* Bouton flottant bleu roue dentée ⚙️ (visible uniquement pour le créateur de la tâche) */}
+          {isCreator && (
             <TouchableOpacity
               style={styles.gearFloatingBtn}
               onPress={() => setShowSettingsModal(true)}
@@ -575,13 +577,14 @@ export const TaskDetailScreen = ({ route, navigation }) => {
         </View>
 
         {/* ======================================================== */}
+        {/* ======================================================== */}
         {/* CARTE 3 : OBSERVATEURS (+ Ajouter / observer / assignee) */}
         {/* ======================================================== */}
         <View style={styles.sectionCard}>
           <View style={styles.cardHeaderRow}>
             <View style={styles.cardTitleWithIcon}>
               <Ionicons name="people-outline" size={20} color="#0284C7" />
-              <Text style={styles.cardSectionTitle}>Observateurs</Text>
+              <Text style={styles.cardSectionTitle}>Observateurs ({observers.length})</Text>
             </View>
           </View>
 
@@ -591,46 +594,98 @@ export const TaskDetailScreen = ({ route, navigation }) => {
             </Text>
           )}
 
-          {/* Ligne saisie : Nom du suiveur + Bouton Ajouter */}
-          <View style={styles.followerInputRow}>
-            <TextInput
-              style={styles.followerTextInput}
-              placeholder="Nom du suiveur"
-              placeholderTextColor="#94A3B8"
-              value={followerName}
-              onChangeText={setFollowerName}
-            />
-            <TouchableOpacity
-              style={styles.addFollowerBtn}
-              onPress={handleAddObserver}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.addFollowerBtnText}>+ Ajouter</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Rôles en dessous : observer | assignee | responsible */}
-          <View style={styles.roleChipsRow}>
-            {[
-              { id: 'observer', label: 'observer' },
-              { id: 'assignee', label: 'assignee' },
-              { id: 'responsible', label: 'responsible' },
-            ].map((role) => {
-              const isSelected = selectedRole === role.id;
-              return (
+          {/* Saisie observateur (Réservée au créateur de la tâche) */}
+          {isCreator ? (
+            <View>
+              {/* Ligne saisie : Nom du suiveur + Bouton Ajouter */}
+              <View style={styles.followerInputRow}>
+                <TextInput
+                  style={styles.followerTextInput}
+                  placeholder="Nom du suiveur à inviter"
+                  placeholderTextColor="#94A3B8"
+                  value={followerName}
+                  onChangeText={setFollowerName}
+                />
                 <TouchableOpacity
-                  key={role.id}
-                  style={[styles.roleChip, isSelected && styles.roleChipSelected]}
-                  onPress={() => setSelectedRole(role.id)}
-                  activeOpacity={0.7}
+                  style={styles.addFollowerBtn}
+                  onPress={handleAddObserver}
+                  activeOpacity={0.8}
                 >
-                  <Text style={[styles.roleChipText, isSelected && styles.roleChipTextSelected]}>
-                    {role.label}
-                  </Text>
+                  <Text style={styles.addFollowerBtnText}>+ Ajouter</Text>
                 </TouchableOpacity>
-              );
-            })}
-          </View>
+              </View>
+
+              {/* Rôles en dessous : observer | assignee | responsible */}
+              <View style={styles.roleChipsRow}>
+                {[
+                  { id: 'observer', label: 'observer' },
+                  { id: 'assignee', label: 'assignee' },
+                  { id: 'responsible', label: 'responsible' },
+                ].map((role) => {
+                  const isSelected = selectedRole === role.id;
+                  return (
+                    <TouchableOpacity
+                      key={role.id}
+                      style={[styles.roleChip, isSelected && styles.roleChipSelected]}
+                      onPress={() => setSelectedRole(role.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.roleChipText, isSelected && styles.roleChipTextSelected]}>
+                        {role.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Invitations rapides par clic pour le créateur */}
+              <View style={{ marginTop: 6, marginBottom: 8 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>
+                  Inviter rapidement un utilisateur :
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {availableUsers
+                    .filter((u) => u.name.toLowerCase() !== currentUser.name.toLowerCase())
+                    .map((user) => {
+                      const alreadyInvited = observers.some(
+                        (o) => o.name.toLowerCase() === user.name.toLowerCase()
+                      );
+                      return (
+                        <TouchableOpacity
+                          key={user.id}
+                          style={[
+                            styles.allowedUserChip,
+                            alreadyInvited && styles.allowedUserChipActive,
+                          ]}
+                          onPress={async () => {
+                            if (alreadyInvited) {
+                              await removeObserver(task.id, user.name);
+                            } else {
+                              await addObserver(task.id, { name: user.name, role: selectedRole });
+                            }
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={{ fontSize: 13, marginRight: 4 }}>{user.avatar}</Text>
+                          <Text
+                            style={[
+                              styles.allowedUserChipText,
+                              alreadyInvited && styles.allowedUserChipTextActive,
+                            ]}
+                          >
+                            {alreadyInvited ? '✓ ' : '+ '}{user.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                </View>
+              </View>
+            </View>
+          ) : (
+            <Text style={[styles.cardEmptyItalicText, { marginVertical: 6 }]}>
+              Liste des collaborateurs invités par {task.author} :
+            </Text>
+          )}
 
           {/* Liste des observateurs déjà ajoutés */}
           {observers.length > 0 && (
@@ -642,46 +697,15 @@ export const TaskDetailScreen = ({ route, navigation }) => {
                   <View style={styles.roleSubBadge}>
                     <Text style={styles.roleSubBadgeText}>{obs.role || 'observer'}</Text>
                   </View>
-                  <TouchableOpacity onPress={() => removeObserver(task.id, obs.id || obs.name)}>
-                    <Ionicons name="close" size={14} color="#64748B" />
-                  </TouchableOpacity>
+                  {isCreator && (
+                    <TouchableOpacity onPress={() => removeObserver(task.id, obs.id || obs.name)}>
+                      <Ionicons name="close" size={14} color="#64748B" />
+                    </TouchableOpacity>
+                  )}
                 </View>
               ))}
             </View>
           )}
-
-          {/* SÉLECTION DES UTILISATEURS AUTORISÉS À COMMENTER CETTE TÂCHE */}
-          <View style={styles.allowedUsersSection}>
-            <View style={styles.subSectionTitleRow}>
-              <Ionicons name="chatbubble-ellipses-outline" size={16} color="#0284C7" />
-              <Text style={styles.subSectionTitle}>
-                Autorisés à commenter cette tâche :
-              </Text>
-            </View>
-            <View style={styles.allowedUserChipsRow}>
-              {availableUsers.map((user) => {
-                const isPermitted = allowedCommenters.includes(user.name);
-                return (
-                  <TouchableOpacity
-                    key={user.id}
-                    style={[styles.allowedUserChip, isPermitted && styles.allowedUserChipActive]}
-                    onPress={() => toggleAllowedCommenter(task.id, user.name)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={{ fontSize: 13, marginRight: 4 }}>{user.avatar}</Text>
-                    <Text
-                      style={[
-                        styles.allowedUserChipText,
-                        isPermitted && styles.allowedUserChipTextActive,
-                      ]}
-                    >
-                      {isPermitted ? '✓ ' : ''}{user.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
         </View>
 
         {/* ======================================================== */}
@@ -869,8 +893,8 @@ export const TaskDetailScreen = ({ route, navigation }) => {
             </View>
           ))}
 
-          {/* Saisie commentaire soumise à autorisation */}
-          {isAllowedToComment ? (
+          {/* Saisie commentaire : réservée au créateur et aux invités */}
+          {canComment ? (
             <View style={styles.commentInputRow}>
               <TextInput
                 style={styles.commentTextInput}
@@ -889,24 +913,15 @@ export const TaskDetailScreen = ({ route, navigation }) => {
             </View>
           ) : (
             <View style={styles.restrictedCommentBox}>
-              <Ionicons name="lock-closed" size={20} color="#DC2626" />
+              <Ionicons name="lock-closed" size={20} color="#64748B" />
               <View style={{ flex: 1, marginLeft: 8 }}>
-                <Text style={styles.restrictedTitle}>Commentaires restreints</Text>
-                <Text style={styles.restrictedText}>
-                  Seuls les utilisateurs autorisés ({allowedCommenters.join(', ')}) peuvent commenter cette tâche. Vous êtes connecté en tant que "{currentUser.name}".
+                <Text style={[styles.restrictedTitle, { color: '#334155' }]}>
+                  Discussion réservée aux invités
+                </Text>
+                <Text style={[styles.restrictedText, { color: '#64748B' }]}>
+                  Vous n'êtes pas invité à cette tâche par {task.author}. Vous pouvez seulement la consulter (les commentaires et modifications vous sont désactivés).
                 </Text>
               </View>
-              {allowedCommenters.length > 0 && (
-                <TouchableOpacity
-                  style={styles.quickSwitchBtn}
-                  onPress={() => {
-                    const targetUser = availableUsers.find((u) => allowedCommenters.includes(u.name));
-                    if (targetUser) switchUser(targetUser);
-                  }}
-                >
-                  <Text style={styles.quickSwitchBtnText}>Changer</Text>
-                </TouchableOpacity>
-              )}
             </View>
           )}
         </View>
@@ -917,12 +932,11 @@ export const TaskDetailScreen = ({ route, navigation }) => {
         <TouchableOpacity
           style={[
             styles.bottomModifyButton,
-            !canEditTask && styles.bottomModifyButtonDisabled,
+            !isCreator && styles.bottomModifyButtonDisabled,
           ]}
           onPress={() => {
-            if (!canEditTask) {
-              const msg =
-                "Modification refusée : Vous n'êtes pas assigné à cette tâche. Seuls le créateur et les membres assignés (assignee ou responsible) peuvent la modifier.";
+            if (!isCreator) {
+              const msg = `Modification refusée : Seul le créateur de cette tâche (${task.author}) a le droit de la modifier. Vous êtes en mode consultation.`;
               if (Platform.OS === 'web') window.alert(msg);
               else Alert.alert('Modification refusée', msg);
               return;
@@ -932,13 +946,13 @@ export const TaskDetailScreen = ({ route, navigation }) => {
           activeOpacity={0.85}
         >
           <Ionicons
-            name={canEditTask ? 'create-outline' : 'lock-closed'}
+            name={isCreator ? 'create-outline' : 'lock-closed'}
             size={18}
             color="#FFFFFF"
             style={{ marginRight: 8 }}
           />
           <Text style={styles.bottomModifyButtonText}>
-            {canEditTask ? 'Modifier' : 'Lecture seule (Non assigné)'}
+            {isCreator ? 'Modifier la tâche' : `Consultation seule (Créée par ${task.author})`}
           </Text>
         </TouchableOpacity>
       </ScrollView>

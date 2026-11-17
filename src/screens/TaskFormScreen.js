@@ -34,7 +34,7 @@ export const TaskFormScreen = ({ route, navigation }) => {
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState('Moyenne');
   const [status, setStatus] = useState('À faire');
-  const [allowedCommenters, setAllowedCommenters] = useState(['Mehdi', 'Professeur']);
+  const [invitedNames, setInvitedNames] = useState(['Professeur']);
 
   // 1. Photo Caméra / Galerie
   const [imageUri, setImageUri] = useState(null);
@@ -60,23 +60,14 @@ export const TaskFormScreen = ({ route, navigation }) => {
     if (isEditing && taskId) {
       const existing = getTask(taskId);
       if (existing) {
-        // Vérifier si l'utilisateur est assigné ou créateur
+        // Seul le créateur de la tâche a le droit de la modifier
         const isAuthor =
           existing.author &&
           currentUser.name &&
           existing.author.toLowerCase() === currentUser.name.toLowerCase();
 
-        const userObserverRecord = (existing.observers || []).find(
-          (obs) => obs.name && obs.name.toLowerCase() === currentUser.name.toLowerCase()
-        );
-
-        const isAssigneeOrResponsible =
-          userObserverRecord &&
-          (userObserverRecord.role === 'assignee' || userObserverRecord.role === 'responsible');
-
-        if (!isAuthor && !isAssigneeOrResponsible) {
-          const msg =
-            "Accès refusé : Seuls les membres assignés (assignee ou responsible) ou l'auteur peuvent modifier cette tâche.";
+        if (!isAuthor) {
+          const msg = `Accès refusé : Seul le créateur de cette tâche (${existing.author}) a le droit de la modifier.`;
           if (Platform.OS === 'web') window.alert(msg);
           else Alert.alert('Accès refusé', msg);
           navigation.goBack();
@@ -99,8 +90,8 @@ export const TaskFormScreen = ({ route, navigation }) => {
           setReminderDate(new Date(existing.reminderDate));
         }
         setLocationReminder(existing.locationReminder || null);
-        if (existing.allowedCommenters) {
-          setAllowedCommenters(existing.allowedCommenters);
+        if (existing.observers) {
+          setInvitedNames(existing.observers.map((o) => o.name));
         }
       }
     }
@@ -221,6 +212,15 @@ export const TaskFormScreen = ({ route, navigation }) => {
       return;
     }
 
+    const observersPayload = isEditing
+      ? undefined
+      : invitedNames.map((name) => ({
+          id: 'obs_' + Date.now() + '_' + name,
+          name,
+          role: 'observer',
+          addedAt: new Date().toLocaleDateString('fr-FR'),
+        }));
+
     const taskPayload = {
       title: title.trim(),
       description: description.trim(),
@@ -231,8 +231,12 @@ export const TaskFormScreen = ({ route, navigation }) => {
       apiFile,
       reminderDate: enableReminder ? reminderDate.toISOString() : null,
       locationReminder,
-      allowedCommenters,
-      ...(isEditing ? {} : { author: currentUser ? currentUser.name : 'Mehdi' }),
+      ...(isEditing
+        ? {}
+        : {
+            observers: observersPayload,
+            author: currentUser ? currentUser.name : 'Mehdi',
+          }),
     };
 
     if (isEditing) {
@@ -622,38 +626,40 @@ export const TaskFormScreen = ({ route, navigation }) => {
           )}
         </View>
 
-        {/* --- SECTION 6 : UTILISATEURS AUTORISÉS À COMMENTER --- */}
+        {/* --- SECTION 6 : INVITER DES COLLABORATEURS --- */}
         <View style={styles.featureSection}>
           <View style={styles.sectionTitleRow}>
-            <Ionicons name="chatbubbles-outline" size={18} color="#0284C7" />
-            <Text style={styles.sectionTitle}>6. Qui peut commenter cette tâche ?</Text>
+            <Ionicons name="people-outline" size={18} color="#0284C7" />
+            <Text style={styles.sectionTitle}>6. Inviter des collaborateurs</Text>
           </View>
           <Text style={styles.subHint}>
-            Sélectionnez les utilisateurs autorisés à commenter (les autres auront les commentaires bloqués) :
+            Les collaborateurs invités pourront consulter la tâche et échanger dans les discussions (les non-invités seront en lecture seule sans discussion) :
           </Text>
           <View style={styles.userChipsRow}>
-            {availableUsers.map((u) => {
-              const isSelected = allowedCommenters.includes(u.name);
-              return (
-                <TouchableOpacity
-                  key={u.id}
-                  style={[styles.userChip, isSelected && styles.userChipSelected]}
-                  onPress={() => {
-                    if (isSelected) {
-                      setAllowedCommenters(allowedCommenters.filter((name) => name !== u.name));
-                    } else {
-                      setAllowedCommenters([...allowedCommenters, u.name]);
-                    }
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={{ fontSize: 13, marginRight: 4 }}>{u.avatar}</Text>
-                  <Text style={[styles.userChipText, isSelected && styles.userChipTextSelected]}>
-                    {isSelected ? '✓ ' : ''}{u.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+            {availableUsers
+              .filter((u) => u.name.toLowerCase() !== (currentUser ? currentUser.name.toLowerCase() : ''))
+              .map((u) => {
+                const isSelected = invitedNames.includes(u.name);
+                return (
+                  <TouchableOpacity
+                    key={u.id}
+                    style={[styles.userChip, isSelected && styles.userChipSelected]}
+                    onPress={() => {
+                      if (isSelected) {
+                        setInvitedNames(invitedNames.filter((name) => name !== u.name));
+                      } else {
+                        setInvitedNames([...invitedNames, u.name]);
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={{ fontSize: 13, marginRight: 4 }}>{u.avatar}</Text>
+                    <Text style={[styles.userChipText, isSelected && styles.userChipTextSelected]}>
+                      {isSelected ? '✓ ' : '+ '}{u.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
           </View>
         </View>
 

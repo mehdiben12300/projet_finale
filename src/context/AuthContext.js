@@ -4,10 +4,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const USER_STORAGE_KEY = '@mytasks_auth_user';
 
 export const DEFAULT_USERS = [
-  { id: 'u1', name: 'Mehdi', role: 'Chef de projet', avatar: '👨‍💻' },
-  { id: 'u2', name: 'Professeur', role: 'Observateur Principal', avatar: '👨‍🏫' },
-  { id: 'u3', name: 'Dr. Ben Ali', role: 'Encadrant', avatar: '🎓' },
-  { id: 'u4', name: 'Sarah', role: 'Développeuse', avatar: '👩‍💻' },
+  { id: 'u1', name: 'Mehdi', role: 'Collaborateur', avatar: '👨‍💻' },
+  { id: 'u2', name: 'Professeur', role: 'Collaborateur', avatar: '👨‍🏫' },
+  { id: 'u3', name: 'Dr. Ben Ali', role: 'Collaborateur', avatar: '🎓' },
+  { id: 'u4', name: 'Sarah', role: 'Collaborateur', avatar: '👩‍💻' },
 ];
 
 const AuthContext = createContext();

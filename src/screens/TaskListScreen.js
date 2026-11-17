@@ -22,19 +22,24 @@ export const TaskListScreen = ({ navigation }) => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('Toutes'); // 'Toutes' | 'À faire' | 'Terminées'
-  const [scopeFilter, setScopeFilter] = useState('all'); // 'all' | 'mine'
+  const [scopeFilter, setScopeFilter] = useState('all'); // 'all' | 'mine' | 'invited'
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
-      // Filtre appartenance (Toutes vs Mes tâches)
-      if (scopeFilter === 'mine' && currentUser) {
-        const isAuthor = task.author && task.author.toLowerCase() === currentUser.name.toLowerCase();
-        const isObserver =
+      // Filtre appartenance (Toutes vs Créées par moi vs Invité)
+      if (currentUser) {
+        const isAuthor =
+          task.author && task.author.toLowerCase() === currentUser.name.toLowerCase();
+        const isInvited =
           task.observers &&
           task.observers.some(
             (o) => o.name && o.name.toLowerCase() === currentUser.name.toLowerCase()
           );
-        if (!isAuthor && !isObserver) {
+
+        if (scopeFilter === 'mine' && !isAuthor) {
+          return false;
+        }
+        if (scopeFilter === 'invited' && !isInvited) {
           return false;
         }
       }
@@ -124,7 +129,7 @@ export const TaskListScreen = ({ navigation }) => {
           >
             <Ionicons
               name="globe-outline"
-              size={14}
+              size={13}
               color={scopeFilter === 'all' ? '#0284C7' : '#64748B'}
             />
             <Text
@@ -133,7 +138,7 @@ export const TaskListScreen = ({ navigation }) => {
                 scopeFilter === 'all' && styles.scopeTabTextActive,
               ]}
             >
-              Toutes les tâches
+              Toutes
             </Text>
           </TouchableOpacity>
 
@@ -144,7 +149,7 @@ export const TaskListScreen = ({ navigation }) => {
           >
             <Ionicons
               name="person-outline"
-              size={14}
+              size={13}
               color={scopeFilter === 'mine' ? '#0284C7' : '#64748B'}
             />
             <Text
@@ -153,7 +158,27 @@ export const TaskListScreen = ({ navigation }) => {
                 scopeFilter === 'mine' && styles.scopeTabTextActive,
               ]}
             >
-              Mes tâches ({currentUser ? currentUser.name : ''})
+              Créées ({currentUser ? currentUser.name : ''})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.scopeTab, scopeFilter === 'invited' && styles.scopeTabActive]}
+            onPress={() => setScopeFilter('invited')}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="people-outline"
+              size={13}
+              color={scopeFilter === 'invited' ? '#0284C7' : '#64748B'}
+            />
+            <Text
+              style={[
+                styles.scopeTabText,
+                scopeFilter === 'invited' && styles.scopeTabTextActive,
+              ]}
+            >
+              Invité
             </Text>
           </TouchableOpacity>
         </View>
