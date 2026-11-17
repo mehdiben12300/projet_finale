@@ -60,6 +60,29 @@ export const TaskFormScreen = ({ route, navigation }) => {
     if (isEditing && taskId) {
       const existing = getTask(taskId);
       if (existing) {
+        // Vérifier si l'utilisateur est assigné ou créateur
+        const isAuthor =
+          existing.author &&
+          currentUser.name &&
+          existing.author.toLowerCase() === currentUser.name.toLowerCase();
+
+        const userObserverRecord = (existing.observers || []).find(
+          (obs) => obs.name && obs.name.toLowerCase() === currentUser.name.toLowerCase()
+        );
+
+        const isAssigneeOrResponsible =
+          userObserverRecord &&
+          (userObserverRecord.role === 'assignee' || userObserverRecord.role === 'responsible');
+
+        if (!isAuthor && !isAssigneeOrResponsible) {
+          const msg =
+            "Accès refusé : Seuls les membres assignés (assignee ou responsible) ou l'auteur peuvent modifier cette tâche.";
+          if (Platform.OS === 'web') window.alert(msg);
+          else Alert.alert('Accès refusé', msg);
+          navigation.goBack();
+          return;
+        }
+
         setTitle(existing.title);
         setDescription(existing.description || '');
         setPriority(existing.priority || 'Moyenne');

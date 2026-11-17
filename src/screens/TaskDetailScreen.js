@@ -107,9 +107,32 @@ export const TaskDetailScreen = ({ route, navigation }) => {
     allowedCommenters.includes(currentUser.name) ||
     (task.author && task.author === currentUser.name);
 
+  // --- RÔLES ET DROITS D'ASSIGNATION ---
+  // 1. Est créateur de la tâche :
+  const isAuthor =
+    task.author && currentUser.name && task.author.toLowerCase() === currentUser.name.toLowerCase();
+
+  // 2. Est assigné ou responsable dans la liste des observateurs :
+  const userObserverRecord = observers.find(
+    (obs) => obs.name && obs.name.toLowerCase() === currentUser.name.toLowerCase()
+  );
+
+  const isAssigneeOrResponsible =
+    userObserverRecord &&
+    (userObserverRecord.role === 'assignee' || userObserverRecord.role === 'responsible');
+
+  // Droit de modifier la tâche et d'ajouter/supprimer des fichiers :
+  const canEditTask = isAuthor || isAssigneeOrResponsible;
+
   // --- 1. PIÈCES JOINTES (Photo & Fichier) ---
   const handleLaunchCamera = async () => {
     setShowPhotoModal(false);
+    if (!canEditTask) {
+      const msg = "Action refusée : Seuls les membres assignés (assignee ou responsible) ou le créateur peuvent ajouter des photos.";
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Accès refusé', msg);
+      return;
+    }
     try {
       const perm = await ImagePicker.requestCameraPermissionsAsync();
       if (!perm.granted) {
@@ -134,6 +157,12 @@ export const TaskDetailScreen = ({ route, navigation }) => {
 
   const handleLaunchGallery = async () => {
     setShowPhotoModal(false);
+    if (!canEditTask) {
+      const msg = "Action refusée : Seuls les membres assignés (assignee ou responsible) ou le créateur peuvent ajouter des photos.";
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Accès refusé', msg);
+      return;
+    }
     try {
       const res = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
@@ -149,10 +178,22 @@ export const TaskDetailScreen = ({ route, navigation }) => {
   };
 
   const handleAddPhoto = () => {
+    if (!canEditTask) {
+      const msg = "Action refusée : Seuls les membres assignés à cette tâche ont le droit d'ajouter des photos.";
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Accès refusé', msg);
+      return;
+    }
     setShowPhotoModal(true);
   };
 
   const handleAddFile = async () => {
+    if (!canEditTask) {
+      const msg = "Action refusée : Seuls les membres assignés à cette tâche ont le droit d'ajouter des fichiers.";
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Accès refusé', msg);
+      return;
+    }
     try {
       const res = await DocumentPicker.getDocumentAsync({
         copyToCacheDirectory: true,
@@ -174,10 +215,22 @@ export const TaskDetailScreen = ({ route, navigation }) => {
   };
 
   const handleRemovePhoto = async () => {
+    if (!canEditTask) {
+      const msg = "Action refusée : Seuls les membres assignés peuvent supprimer des pièces jointes.";
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Accès refusé', msg);
+      return;
+    }
     await updateTask(task.id, { imageUri: null });
   };
 
   const handleRemoveFile = async () => {
+    if (!canEditTask) {
+      const msg = "Action refusée : Seuls les membres assignés peuvent supprimer des pièces jointes.";
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Accès refusé', msg);
+      return;
+    }
     await updateTask(task.id, { attachedFile: null });
   };
 
@@ -191,6 +244,13 @@ export const TaskDetailScreen = ({ route, navigation }) => {
 
   // --- 2. OBSERVATEURS (Suiveurs) ---
   const handleAddObserver = async () => {
+    if (!canEditTask) {
+      const msg = "Action refusée : Seuls les membres assignés ou le créateur peuvent ajouter des observateurs.";
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Accès refusé', msg);
+      return;
+    }
+
     const nameToAdd = followerName.trim() || currentUser.name;
     if (!nameToAdd) {
       Alert.alert('Erreur', 'Veuillez saisir le nom du suiveur.');
@@ -207,6 +267,13 @@ export const TaskDetailScreen = ({ route, navigation }) => {
 
   // --- 3. POSITIONS GPS (Capturer) ---
   const handleCaptureGps = async () => {
+    if (!canEditTask) {
+      const msg = "Action refusée : Seuls les membres assignés ou le créateur peuvent modifier la position géographique.";
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Accès refusé', msg);
+      return;
+    }
+
     setCapturingGps(true);
     try {
       const pos = await locationService.getCurrentLocation();
@@ -276,6 +343,12 @@ export const TaskDetailScreen = ({ route, navigation }) => {
 
   // --- PROGRAMMATION DE RAPPEL DATE & HEURE ---
   const handleSetReminderPreset = async (hoursFromNow) => {
+    if (!canEditTask) {
+      const msg = "Action refusée : Seuls les membres assignés peuvent reprogrammer le rappel de cette tâche.";
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Accès refusé', msg);
+      return;
+    }
     const reminderTime = new Date(Date.now() + hoursFromNow * 3600 * 1000);
     await updateTask(task.id, { reminderDate: reminderTime.toISOString() });
     setShowReminderModal(false);
@@ -389,16 +462,41 @@ export const TaskDetailScreen = ({ route, navigation }) => {
                 Date de création: {task.createdAt}
               </Text>
             </View>
+
+            {/* Statut d'assignation de l'utilisateur connecté */}
+            <View style={styles.userRoleOnTaskRow}>
+              <Ionicons
+                name={canEditTask ? 'shield-checkmark' : 'lock-closed'}
+                size={13}
+                color={canEditTask ? '#0284C7' : '#94A3B8'}
+              />
+              <Text
+                style={[
+                  styles.userRoleOnTaskText,
+                  canEditTask && { color: '#0284C7', fontWeight: '700' },
+                ]}
+              >
+                {isAuthor
+                  ? 'Créateur (Assigné - Droits complets)'
+                  : isAssigneeOrResponsible
+                  ? `Assigné (${userObserverRecord.role} - Droits complets)`
+                  : userObserverRecord
+                  ? 'Observateur (Lecture seule)'
+                  : 'Non assigné (Lecture seule)'}
+              </Text>
+            </View>
           </View>
 
-          {/* Bouton flottant bleu roue dentée ⚙️ sur le coin inférieur droit */}
-          <TouchableOpacity
-            style={styles.gearFloatingBtn}
-            onPress={() => setShowSettingsModal(true)}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="settings-sharp" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
+          {/* Bouton flottant bleu roue dentée ⚙️ (visible uniquement pour les membres assignés) */}
+          {canEditTask && (
+            <TouchableOpacity
+              style={styles.gearFloatingBtn}
+              onPress={() => setShowSettingsModal(true)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="settings-sharp" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* ======================================================== */}
@@ -817,12 +915,31 @@ export const TaskDetailScreen = ({ route, navigation }) => {
         {/* BOUTON MODIFIER EN BAS (Comme sur la capture)            */}
         {/* ======================================================== */}
         <TouchableOpacity
-          style={styles.bottomModifyButton}
-          onPress={() => navigation.navigate('TaskForm', { mode: 'edit', taskId: task.id })}
+          style={[
+            styles.bottomModifyButton,
+            !canEditTask && styles.bottomModifyButtonDisabled,
+          ]}
+          onPress={() => {
+            if (!canEditTask) {
+              const msg =
+                "Modification refusée : Vous n'êtes pas assigné à cette tâche. Seuls le créateur et les membres assignés (assignee ou responsible) peuvent la modifier.";
+              if (Platform.OS === 'web') window.alert(msg);
+              else Alert.alert('Modification refusée', msg);
+              return;
+            }
+            navigation.navigate('TaskForm', { mode: 'edit', taskId: task.id });
+          }}
           activeOpacity={0.85}
         >
-          <Ionicons name="create-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
-          <Text style={styles.bottomModifyButtonText}>Modifier</Text>
+          <Ionicons
+            name={canEditTask ? 'create-outline' : 'lock-closed'}
+            size={18}
+            color="#FFFFFF"
+            style={{ marginRight: 8 }}
+          />
+          <Text style={styles.bottomModifyButtonText}>
+            {canEditTask ? 'Modifier' : 'Lecture seule (Non assigné)'}
+          </Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -1364,6 +1481,25 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+  bottomModifyButtonDisabled: {
+    backgroundColor: '#64748B',
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  userRoleOnTaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  userRoleOnTaskText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
   },
 
   // Modal réglages
