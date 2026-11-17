@@ -19,6 +19,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { useTasks } from '../context/TaskContext';
+import { useAuth } from '../context/AuthContext';
 import MapLocationPicker from '../components/MapLocationPicker';
 import apiFileService from '../services/apiFileService';
 
@@ -27,6 +28,7 @@ export const TaskFormScreen = ({ route, navigation }) => {
   const isEditing = mode === 'edit';
 
   const { addTask, updateTask, deleteTask, getTask } = useTasks();
+  const { currentUser } = useAuth();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -202,6 +204,7 @@ export const TaskFormScreen = ({ route, navigation }) => {
       apiFile,
       reminderDate: enableReminder ? reminderDate.toISOString() : null,
       locationReminder,
+      ...(isEditing ? {} : { author: currentUser ? currentUser.name : 'Mehdi' }),
     };
 
     if (isEditing) {

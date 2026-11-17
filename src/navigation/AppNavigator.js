@@ -11,8 +11,24 @@ import ProfileScreen from '../screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
+const TasksStack = createNativeStackNavigator();
 
-// Navigateur d'onglets inférieurs (Bottom Tabs)
+// Pile de navigation pour l'onglet Tâches (permet de garder les Bottom Tabs visibles sur l'écran Détails)
+function TasksStackNavigator() {
+  return (
+    <TasksStack.Navigator
+      screenOptions={{
+        headerShown: false,
+        animation: 'slide_from_right',
+      }}
+    >
+      <TasksStack.Screen name="TasksList" component={TaskListScreen} />
+      <TasksStack.Screen name="TaskDetail" component={TaskDetailScreen} />
+    </TasksStack.Navigator>
+  );
+}
+
+// Navigateur d'onglets inférieurs (Bottom Tabs) - Conforme au screenshot
 function BottomTabs() {
   return (
     <Tab.Navigator
@@ -37,7 +53,7 @@ function BottomTabs() {
           if (route.name === 'HomeTab') {
             iconName = focused ? 'home' : 'home-outline';
           } else if (route.name === 'TasksTab') {
-            iconName = focused ? 'clipboard' : 'clipboard-outline';
+            iconName = focused ? 'checkbox' : 'checkbox-outline';
           } else if (route.name === 'AddTab') {
             iconName = focused ? 'add-circle' : 'add-circle-outline';
           } else if (route.name === 'ProfileTab') {
@@ -55,7 +71,7 @@ function BottomTabs() {
       />
       <Tab.Screen
         name="TasksTab"
-        component={TaskListScreen}
+        component={TasksStackNavigator}
         options={{ tabBarLabel: 'Tâches' }}
       />
       <Tab.Screen
@@ -65,7 +81,6 @@ function BottomTabs() {
         options={{ tabBarLabel: 'Ajouter' }}
         listeners={({ navigation }) => ({
           tabPress: (e) => {
-            // Empêche le comportement par défaut de l'onglet et pousse l'écran d'ajout proprement
             e.preventDefault();
             navigation.navigate('TaskForm', { mode: 'add' });
           },

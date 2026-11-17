@@ -64,6 +64,22 @@ export const TaskCard = ({ task, onPress }) => {
 
         {/* Badges indicateurs des fonctionnalités avancées */}
         <View style={styles.featuresRow}>
+          {task.author && (
+            <View style={[styles.featurePill, { backgroundColor: '#F0F9FF' }]}>
+              <Ionicons name="person" size={12} color="#0284C7" />
+              <Text style={[styles.featurePillText, { color: '#0369A1' }]}>{task.author}</Text>
+            </View>
+          )}
+
+          {task.observers && task.observers.length > 0 && (
+            <View style={[styles.featurePill, { backgroundColor: '#F5F3FF' }]}>
+              <Ionicons name="people" size={12} color="#7C3AED" />
+              <Text style={[styles.featurePillText, { color: '#6D28D9' }]}>
+                {task.observers.length} obs.
+              </Text>
+            </View>
+          )}
+
           {task.imageUri && (
             <View style={styles.featurePill}>
               <Ionicons name="camera" size={12} color="#0284C7" />

@@ -12,16 +12,33 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTasks } from '../context/TaskContext';
+import { useAuth } from '../context/AuthContext';
 import TaskCard from '../components/TaskCard';
 import StatsOverview from '../components/StatsOverview';
 
 export const TaskListScreen = ({ navigation }) => {
-  const { tasks, loading, stats } = useTasks();
+  const { tasks, loading, stats, syncStatus, triggerSync } = useTasks();
+  const { currentUser } = useAuth();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('Toutes'); // 'Toutes' | 'À faire' | 'Terminées'
+  const [scopeFilter, setScopeFilter] = useState('all'); // 'all' | 'mine'
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
+      // Filtre appartenance (Toutes vs Mes tâches)
+      if (scopeFilter === 'mine' && currentUser) {
+        const isAuthor = task.author && task.author.toLowerCase() === currentUser.name.toLowerCase();
+        const isObserver =
+          task.observers &&
+          task.observers.some(
+            (o) => o.name && o.name.toLowerCase() === currentUser.name.toLowerCase()
+          );
+        if (!isAuthor && !isObserver) {
+          return false;
+        }
+      }
+
       // Filtre statut : gère 'Toutes', 'À faire', et 'Terminées' (avec ou sans 's')
       let matchesFilter = true;
       if (activeFilter === 'À faire') {
@@ -38,9 +55,34 @@ export const TaskListScreen = ({ navigation }) => {
 
       return matchesFilter && matchesSearch;
     });
-  }, [tasks, activeFilter, searchQuery]);
+  }, [tasks, activeFilter, scopeFilter, searchQuery, currentUser]);
 
-  // Écran de chargement conforme à la Partie 5
+  // Indicateur statut de synchronisation
+  const renderSyncBadge = () => {
+    let dotColor = '#10B981'; // synchronisé
+    let statusLabel = 'API en ligne';
+
+    if (syncStatus === 'offline') {
+      dotColor = '#F59E0B';
+      statusLabel = 'Hors-ligne (Local)';
+    } else if (syncStatus === 'syncing') {
+      dotColor = '#0284C7';
+      statusLabel = 'Synchro en cours...';
+    }
+
+    return (
+      <TouchableOpacity
+        style={styles.syncIndicator}
+        onPress={triggerSync}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.syncDot, { backgroundColor: dotColor }]} />
+        <Text style={styles.syncText}>{statusLabel}</Text>
+      </TouchableOpacity>
+    );
+  };
+
+  // Écran de chargement
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -54,9 +96,13 @@ export const TaskListScreen = ({ navigation }) => {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <View style={styles.container}>
-        {/* En-tête : Titre + Bouton Ajouter (+) */}
+        {/* En-tête : Titre + Statut Sync + Bouton Ajouter (+) */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Mes tâches</Text>
+          <View>
+            <Text style={styles.headerTitle}>Mes tâches</Text>
+            {renderSyncBadge()}
+          </View>
+
           <TouchableOpacity
             style={styles.addButton}
             onPress={() => navigation.navigate('TaskForm', { mode: 'add' })}
@@ -68,6 +114,49 @@ export const TaskListScreen = ({ navigation }) => {
 
         {/* Statistiques */}
         <StatsOverview stats={stats} />
+
+        {/* Bascule Portée : Toutes les tâches vs Mes tâches (Observateur/Auteur) */}
+        <View style={styles.scopeTabsContainer}>
+          <TouchableOpacity
+            style={[styles.scopeTab, scopeFilter === 'all' && styles.scopeTabActive]}
+            onPress={() => setScopeFilter('all')}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="globe-outline"
+              size={14}
+              color={scopeFilter === 'all' ? '#0284C7' : '#64748B'}
+            />
+            <Text
+              style={[
+                styles.scopeTabText,
+                scopeFilter === 'all' && styles.scopeTabTextActive,
+              ]}
+            >
+              Toutes les tâches
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.scopeTab, scopeFilter === 'mine' && styles.scopeTabActive]}
+            onPress={() => setScopeFilter('mine')}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="person-outline"
+              size={14}
+              color={scopeFilter === 'mine' ? '#0284C7' : '#64748B'}
+            />
+            <Text
+              style={[
+                styles.scopeTabText,
+                scopeFilter === 'mine' && styles.scopeTabTextActive,
+              ]}
+            >
+              Mes tâches ({currentUser ? currentUser.name : ''})
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Barre de recherche */}
         <View style={styles.searchContainer}>
@@ -87,7 +176,7 @@ export const TaskListScreen = ({ navigation }) => {
           )}
         </View>
 
-        {/* Filtres par onglets */}
+        {/* Filtres par onglets statut */}
         <View style={styles.filterTabs}>
           {['Toutes', 'À faire', 'Terminées'].map((filter) => {
             const isActive = activeFilter === filter;
@@ -152,6 +241,53 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '800',
     color: '#0F172A',
+  },
+  syncIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
+  syncDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  syncText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  scopeTabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 3,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 4,
+  },
+  scopeTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    borderRadius: 8,
+    gap: 6,
+  },
+  scopeTabActive: {
+    backgroundColor: '#E0F2FE',
+  },
+  scopeTabText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  scopeTabTextActive: {
+    color: '#0284C7',
+    fontWeight: '700',
   },
   addButton: {
     backgroundColor: '#0284C7',
