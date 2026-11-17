@@ -52,11 +52,12 @@ export const TaskDetailScreen = ({ route, navigation }) => {
     deleteTask,
     addObserver,
     removeObserver,
+    toggleAllowedCommenter,
     addCommentToTask,
     syncStatus,
     triggerSync,
   } = useTasks();
-  const { currentUser } = useAuth();
+  const { currentUser, availableUsers, switchUser } = useAuth();
 
   const task = getTask(taskId);
 
@@ -66,7 +67,14 @@ export const TaskDetailScreen = ({ route, navigation }) => {
 
   // États pour la position GPS
   const [capturingGps, setCapturingGps] = useState(false);
+  const [checkingProximity, setCheckingProximity] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
+
+  // États pour pièces jointes (Photo & Fichiers)
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+
+  // États pour rappels date & heure
+  const [showReminderModal, setShowReminderModal] = useState(false);
 
   // État commentaire
   const [commentText, setCommentText] = useState('');
@@ -94,50 +102,54 @@ export const TaskDetailScreen = ({ route, navigation }) => {
   const statusColor = getStatusColor(task.status);
   const observers = task.observers || [];
   const comments = task.comments || [];
+  const allowedCommenters = task.allowedCommenters || ['Mehdi', 'Professeur'];
+  const isAllowedToComment =
+    allowedCommenters.includes(currentUser.name) ||
+    (task.author && task.author === currentUser.name);
 
   // --- 1. PIÈCES JOINTES (Photo & Fichier) ---
-  const handleAddPhoto = async () => {
+  const handleLaunchCamera = async () => {
+    setShowPhotoModal(false);
     try {
-      Alert.alert(
-        'Ajouter une photo',
-        'Choisissez la source de l’image :',
-        [
-          {
-            text: 'Prendre une photo (Caméra)',
-            onPress: async () => {
-              const perm = await ImagePicker.requestCameraPermissionsAsync();
-              if (!perm.granted) {
-                Alert.alert('Permission requise', 'Accès caméra nécessaire.');
-                return;
-              }
-              const res = await ImagePicker.launchCameraAsync({
-                allowsEditing: true,
-                quality: 0.8,
-              });
-              if (!res.canceled && res.assets && res.assets.length > 0) {
-                await updateTask(task.id, { imageUri: res.assets[0].uri });
-              }
-            },
-          },
-          {
-            text: 'Choisir dans la galerie',
-            onPress: async () => {
-              const res = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ['images'],
-                allowsEditing: true,
-                quality: 0.8,
-              });
-              if (!res.canceled && res.assets && res.assets.length > 0) {
-                await updateTask(task.id, { imageUri: res.assets[0].uri });
-              }
-            },
-          },
-          { text: 'Annuler', style: 'cancel' },
-        ]
-      );
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        if (Platform.OS === 'web') {
+          window.alert("Permission caméra requise.");
+        } else {
+          Alert.alert('Permission requise', 'Accès caméra nécessaire.');
+        }
+        return;
+      }
+      const res = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        quality: 0.8,
+      });
+      if (!res.canceled && res.assets && res.assets.length > 0) {
+        await updateTask(task.id, { imageUri: res.assets[0].uri });
+      }
     } catch (e) {
-      console.warn(e);
+      console.warn('Erreur caméra:', e);
     }
+  };
+
+  const handleLaunchGallery = async () => {
+    setShowPhotoModal(false);
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+      });
+      if (!res.canceled && res.assets && res.assets.length > 0) {
+        await updateTask(task.id, { imageUri: res.assets[0].uri });
+      }
+    } catch (e) {
+      console.warn('Erreur galerie:', e);
+    }
+  };
+
+  const handleAddPhoto = () => {
+    setShowPhotoModal(true);
   };
 
   const handleAddFile = async () => {
@@ -218,6 +230,59 @@ export const TaskDetailScreen = ({ route, navigation }) => {
       Alert.alert('Erreur GPS', 'Impossible de capturer la position actuelle.');
     } finally {
       setCapturingGps(false);
+    }
+  };
+
+  // --- VÉRIFICATION & SIMULATION DE PROXIMITÉ GPS ---
+  const handleCheckProximity = async () => {
+    if (!task.locationReminder) return;
+    setCheckingProximity(true);
+    try {
+      const currentPos = await locationService.getCurrentLocation();
+      const { isNearby, distanceMeters } = locationService.checkProximity(
+        currentPos,
+        task.locationReminder,
+        500
+      );
+
+      if (isNearby) {
+        await notificationService.notifyLocationArrival({
+          taskTitle: task.title,
+          locationName: task.locationReminder.locationName,
+        });
+      } else {
+        const msg = `Vous êtes à ${distanceMeters} mètres du lieu prévu (${task.locationReminder.locationName}). Le rappel automatique se déclenchera à moins de 500m.`;
+        if (Platform.OS === 'web') {
+          window.alert(`📡 Position GPS :\n${msg}`);
+        } else {
+          Alert.alert('Vérification GPS', msg);
+        }
+      }
+    } catch (e) {
+      console.warn(e);
+      Alert.alert('Erreur', 'Impossible de vérifier la position GPS.');
+    } finally {
+      setCheckingProximity(false);
+    }
+  };
+
+  const handleSimulateArrival = async () => {
+    if (!task.locationReminder) return;
+    await notificationService.notifyLocationArrival({
+      taskTitle: task.title,
+      locationName: task.locationReminder.locationName,
+    });
+  };
+
+  // --- PROGRAMMATION DE RAPPEL DATE & HEURE ---
+  const handleSetReminderPreset = async (hoursFromNow) => {
+    const reminderTime = new Date(Date.now() + hoursFromNow * 3600 * 1000);
+    await updateTask(task.id, { reminderDate: reminderTime.toISOString() });
+    setShowReminderModal(false);
+    if (Platform.OS === 'web') {
+      window.alert(`⏰ Rappel programmé pour : ${reminderTime.toLocaleString('fr-FR')}`);
+    } else {
+      Alert.alert('Rappel programmé', `Rappel fixé au : ${reminderTime.toLocaleString('fr-FR')}`);
     }
   };
 
@@ -486,10 +551,43 @@ export const TaskDetailScreen = ({ route, navigation }) => {
               ))}
             </View>
           )}
+
+          {/* SÉLECTION DES UTILISATEURS AUTORISÉS À COMMENTER CETTE TÂCHE */}
+          <View style={styles.allowedUsersSection}>
+            <View style={styles.subSectionTitleRow}>
+              <Ionicons name="chatbubble-ellipses-outline" size={16} color="#0284C7" />
+              <Text style={styles.subSectionTitle}>
+                Autorisés à commenter cette tâche :
+              </Text>
+            </View>
+            <View style={styles.allowedUserChipsRow}>
+              {availableUsers.map((user) => {
+                const isPermitted = allowedCommenters.includes(user.name);
+                return (
+                  <TouchableOpacity
+                    key={user.id}
+                    style={[styles.allowedUserChip, isPermitted && styles.allowedUserChipActive]}
+                    onPress={() => toggleAllowedCommenter(task.id, user.name)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={{ fontSize: 13, marginRight: 4 }}>{user.avatar}</Text>
+                    <Text
+                      style={[
+                        styles.allowedUserChipText,
+                        isPermitted && styles.allowedUserChipTextActive,
+                      ]}
+                    >
+                      {isPermitted ? '✓ ' : ''}{user.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
         </View>
 
         {/* ======================================================== */}
-        {/* CARTE 4 : POSITIONS (🎯 Capturer)                        */}
+        {/* CARTE 4 : POSITIONS (🗺️ Carte & 🎯 Capturer)             */}
         {/* ======================================================== */}
         <View style={styles.sectionCard}>
           <View style={styles.cardHeaderRow}>
@@ -498,50 +596,162 @@ export const TaskDetailScreen = ({ route, navigation }) => {
               <Text style={styles.cardSectionTitle}>Positions</Text>
             </View>
 
-            <TouchableOpacity
-              style={styles.pillActionBtn}
-              onPress={handleCaptureGps}
-              disabled={capturingGps}
-              activeOpacity={0.8}
-            >
-              {capturingGps ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <>
-                  <Ionicons name="locate" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                  <Text style={styles.pillActionBtnText}>Capturer</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            <View style={styles.headerPillButtons}>
+              <TouchableOpacity
+                style={styles.pillActionBtn}
+                onPress={() => setShowMapModal(true)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="map" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                <Text style={styles.pillActionBtnText}>Carte</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.pillActionBtn}
+                onPress={handleCaptureGps}
+                disabled={capturingGps}
+                activeOpacity={0.8}
+              >
+                {capturingGps ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons name="locate" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                    <Text style={styles.pillActionBtnText}>Capturer</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
 
           {!task.locationReminder ? (
             <Text style={styles.cardEmptyItalicText}>
-              Aucune position. Capturez la position actuelle (GPS).
+              Aucune position. Capturez la position actuelle (GPS) ou sélectionnez sur la carte.
             </Text>
           ) : (
-            <View style={styles.locationCapturedBlock}>
-              <Ionicons name="pin" size={20} color="#DC2626" />
-              <View style={{ flex: 1, marginHorizontal: 8 }}>
-                <Text style={styles.locationNameText}>
-                  {task.locationReminder.locationName || 'Position GPS'}
-                </Text>
-                <Text style={styles.locationCoordsText}>
-                  Lat: {task.locationReminder.latitude.toFixed(4)} | Lon: {task.locationReminder.longitude.toFixed(4)}
-                </Text>
+            <View>
+              <View style={styles.locationCapturedBlock}>
+                <Ionicons name="pin" size={20} color="#DC2626" />
+                <View style={{ flex: 1, marginHorizontal: 8 }}>
+                  <Text style={styles.locationNameText}>
+                    {task.locationReminder.locationName || 'Position GPS'}
+                  </Text>
+                  <Text style={styles.locationCoordsText}>
+                    Lat: {task.locationReminder.latitude.toFixed(4)} | Lon: {task.locationReminder.longitude.toFixed(4)}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.openMapBtn}
+                  onPress={() => setShowMapModal(true)}
+                >
+                  <Ionicons name="map" size={18} color="#0284C7" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ padding: 4, marginLeft: 4 }}
+                  onPress={async () => {
+                    await updateTask(task.id, { locationReminder: null });
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                style={styles.openMapBtn}
-                onPress={() => setShowMapModal(true)}
-              >
-                <Ionicons name="map" size={16} color="#0284C7" />
-              </TouchableOpacity>
+
+              {/* Boutons de test de détection de proximité */}
+              <View style={styles.proximityButtonsRow}>
+                <TouchableOpacity
+                  style={styles.checkProximityBtn}
+                  onPress={handleCheckProximity}
+                  disabled={checkingProximity}
+                  activeOpacity={0.8}
+                >
+                  {checkingProximity ? (
+                    <ActivityIndicator size="small" color="#0284C7" />
+                  ) : (
+                    <>
+                      <Ionicons name="radio" size={14} color="#0284C7" style={{ marginRight: 4 }} />
+                      <Text style={styles.checkProximityBtnText}>Vérifier GPS</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.simulateArrivalBtn}
+                  onPress={handleSimulateArrival}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="notifications-outline" size={14} color="#16A34A" style={{ marginRight: 4 }} />
+                  <Text style={styles.simulateArrivalBtnText}>Simuler arrivée (Alerte)</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
         </View>
 
         {/* ======================================================== */}
-        {/* CARTE 5 : COMMENTAIRES ET NOTIFICATIONS                  */}
+        {/* CARTE 5 : RAPPEL DATE & HEURE                            */}
+        {/* ======================================================== */}
+        <View style={styles.sectionCard}>
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.cardTitleWithIcon}>
+              <Ionicons name="alarm-outline" size={20} color="#D97706" />
+              <Text style={styles.cardSectionTitle}>Rappel Date & Heure</Text>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.pillActionBtn, { backgroundColor: '#D97706' }]}
+              onPress={() => setShowReminderModal(true)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="calendar" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+              <Text style={styles.pillActionBtnText}>
+                {task.reminderDate ? 'Modifier' : '+ Définir'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {task.reminderDate ? (
+            <View style={styles.reminderActiveBox}>
+              <Ionicons name="notifications" size={20} color="#D97706" />
+              <View style={{ flex: 1, marginHorizontal: 8 }}>
+                <Text style={styles.reminderDateText}>
+                  ⏰ Prévu le : {new Date(task.reminderDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })} à {new Date(task.reminderDate).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+                <Text style={styles.reminderSubText}>Notification push programmée sur cet appareil</Text>
+              </View>
+              <TouchableOpacity
+                onPress={async () => {
+                  await updateTask(task.id, { reminderDate: null });
+                }}
+              >
+                <Ionicons name="close-circle" size={20} color="#DC2626" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Text style={styles.cardEmptyItalicText}>
+              Aucun rappel programmé. Définissez une date et une heure de notification.
+            </Text>
+          )}
+
+          {/* Bouton de test direct de la notification */}
+          <TouchableOpacity
+            style={styles.testNotificationBtn}
+            onPress={async () => {
+              await notificationService.triggerTestReminder(task.title, 3);
+              if (Platform.OS === 'web') {
+                // géré dans triggerTestReminder
+              } else {
+                Alert.alert('Rappel lancé', 'La notification de rappel sonnera dans 3 secondes !');
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="notifications-active" size={16} color="#D97706" style={{ marginRight: 6 }} />
+            <Text style={styles.testNotificationBtnText}>Tester la notification de rappel (3s)</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ======================================================== */}
+        {/* CARTE 6 : COMMENTAIRES ET NOTIFICATIONS                  */}
         {/* ======================================================== */}
         <View style={styles.sectionCard}>
           <View style={styles.cardHeaderRow}>
@@ -561,23 +771,46 @@ export const TaskDetailScreen = ({ route, navigation }) => {
             </View>
           ))}
 
-          {/* Saisie commentaire */}
-          <View style={styles.commentInputRow}>
-            <TextInput
-              style={styles.commentTextInput}
-              placeholder={`Commenter en tant que ${currentUser.name}...`}
-              placeholderTextColor="#94A3B8"
-              value={commentText}
-              onChangeText={setCommentText}
-            />
-            <TouchableOpacity
-              style={styles.commentSendBtn}
-              onPress={handlePostComment}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="send" size={16} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
+          {/* Saisie commentaire soumise à autorisation */}
+          {isAllowedToComment ? (
+            <View style={styles.commentInputRow}>
+              <TextInput
+                style={styles.commentTextInput}
+                placeholder={`Commenter en tant que ${currentUser.name}...`}
+                placeholderTextColor="#94A3B8"
+                value={commentText}
+                onChangeText={setCommentText}
+              />
+              <TouchableOpacity
+                style={styles.commentSendBtn}
+                onPress={handlePostComment}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="send" size={16} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.restrictedCommentBox}>
+              <Ionicons name="lock-closed" size={20} color="#DC2626" />
+              <View style={{ flex: 1, marginLeft: 8 }}>
+                <Text style={styles.restrictedTitle}>Commentaires restreints</Text>
+                <Text style={styles.restrictedText}>
+                  Seuls les utilisateurs autorisés ({allowedCommenters.join(', ')}) peuvent commenter cette tâche. Vous êtes connecté en tant que "{currentUser.name}".
+                </Text>
+              </View>
+              {allowedCommenters.length > 0 && (
+                <TouchableOpacity
+                  style={styles.quickSwitchBtn}
+                  onPress={() => {
+                    const targetUser = availableUsers.find((u) => allowedCommenters.includes(u.name));
+                    if (targetUser) switchUser(targetUser);
+                  }}
+                >
+                  <Text style={styles.quickSwitchBtnText}>Changer</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
         </View>
 
         {/* ======================================================== */}
@@ -651,6 +884,92 @@ export const TaskDetailScreen = ({ route, navigation }) => {
             <TouchableOpacity
               style={styles.modalCloseBtn}
               onPress={() => setShowSettingsModal(false)}
+            >
+              <Text style={styles.modalCloseBtnText}>Fermer</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Choix Source Photo (Caméra vs Galerie) */}
+      <Modal visible={showPhotoModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Ajouter une photo 📷</Text>
+            <Text style={styles.modalSub}>Choisissez la source de l’image :</Text>
+
+            <TouchableOpacity style={styles.modalAction} onPress={handleLaunchCamera}>
+              <Ionicons name="camera" size={22} color="#0284C7" />
+              <Text style={styles.modalActionText}>Prendre une photo (Caméra)</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.modalAction} onPress={handleLaunchGallery}>
+              <Ionicons name="images" size={22} color="#0284C7" />
+              <Text style={styles.modalActionText}>Choisir dans la galerie</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              onPress={() => setShowPhotoModal(false)}
+            >
+              <Text style={styles.modalCloseBtnText}>Annuler</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Programmation Rappel Date & Heure */}
+      <Modal visible={showReminderModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Programmer un rappel ⏰</Text>
+            <Text style={styles.modalSub}>Choisissez quand recevoir la notification :</Text>
+
+            <TouchableOpacity
+              style={styles.modalAction}
+              onPress={() => handleSetReminderPreset(1)}
+            >
+              <Ionicons name="time-outline" size={20} color="#D97706" />
+              <Text style={styles.modalActionText}>Dans 1 heure</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalAction}
+              onPress={() => handleSetReminderPreset(24)}
+            >
+              <Ionicons name="sunny-outline" size={20} color="#D97706" />
+              <Text style={styles.modalActionText}>Demain (+24h)</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalAction}
+              onPress={() => handleSetReminderPreset(48)}
+            >
+              <Ionicons name="calendar-outline" size={20} color="#D97706" />
+              <Text style={styles.modalActionText}>Dans 2 jours (+48h)</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.modalAction, { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' }]}
+              onPress={async () => {
+                setShowReminderModal(false);
+                await notificationService.triggerTestReminder(task.title, 5);
+                if (Platform.OS === 'web') {
+                  // Handled
+                } else {
+                  Alert.alert('Rappel lancé', 'La notification sonnera dans 5 secondes !');
+                }
+              }}
+            >
+              <Ionicons name="flash-outline" size={20} color="#B45309" />
+              <Text style={[styles.modalActionText, { color: '#B45309', fontWeight: '700' }]}>
+                Tester en direct (dans 5 secondes)
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              onPress={() => setShowReminderModal(false)}
             >
               <Text style={styles.modalCloseBtnText}>Fermer</Text>
             </TouchableOpacity>
@@ -1066,6 +1385,162 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#0F172A',
     marginBottom: 14,
+  },
+  modalSub: {
+    fontSize: 12,
+    color: '#64748B',
+    marginBottom: 12,
+  },
+  allowedUsersSection: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  subSectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  subSectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  allowedUserChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  allowedUserChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  allowedUserChipActive: {
+    backgroundColor: '#E0F2FE',
+    borderColor: '#0284C7',
+  },
+  allowedUserChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  allowedUserChipTextActive: {
+    color: '#0284C7',
+    fontWeight: '700',
+  },
+  proximityButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  checkProximityBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  checkProximityBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  simulateArrivalBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  simulateArrivalBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#16A34A',
+  },
+  reminderActiveBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 6,
+  },
+  reminderDateText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  reminderSubText: {
+    fontSize: 11,
+    color: '#B45309',
+    marginTop: 2,
+  },
+  testNotificationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  testNotificationBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#D97706',
+  },
+  restrictedCommentBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 8,
+  },
+  restrictedTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#DC2626',
+    marginBottom: 2,
+  },
+  restrictedText: {
+    fontSize: 11,
+    color: '#991B1B',
+    lineHeight: 15,
+  },
+  quickSwitchBtn: {
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginLeft: 6,
+  },
+  quickSwitchBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
   },
   modalAction: {
     flexDirection: 'row',

@@ -107,6 +107,51 @@ export const notificationService = {
       trigger: null, // Immédiat
     });
   },
+
+  // Tester la notification de rappel après un délai (ex: 5 secondes)
+  async triggerTestReminder(taskTitle, seconds = 5) {
+    if (Platform.OS === 'web') {
+      setTimeout(() => {
+        window.alert(`⏰ RAPPEL DE TÂCHE !\nIl est l'heure de réaliser : "${taskTitle}"`);
+      }, seconds * 1000);
+      return;
+    }
+
+    await this.requestPermissions();
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: `⏰ Rappel de tâche : ${taskTitle}`,
+        body: 'Ceci est votre rappel programmé pour cette tâche !',
+        sound: true,
+        data: { type: 'test_reminder' },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: seconds,
+      },
+    });
+  },
+
+  // Notification d'arrivée sur le lieu (Détection de proximité GPS)
+  async notifyLocationArrival({ taskTitle, locationName }) {
+    if (Platform.OS === 'web') {
+      window.alert(
+        `📍 ALERTE DE PROXIMITÉ GPS !\nVous êtes arrivé à destination : ${locationName || 'Zone prévue'}\nTâche : "${taskTitle}"`
+      );
+      return;
+    }
+
+    await this.requestPermissions();
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: `📍 Vous êtes arrivé sur les lieux !`,
+        body: `Rappel de position pour "${taskTitle}" (${locationName || 'Lieu prévu'}).`,
+        sound: true,
+        data: { type: 'location_arrival' },
+      },
+      trigger: null, // Immédiat
+    });
+  },
 };
 
 export default notificationService;

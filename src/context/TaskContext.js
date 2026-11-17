@@ -83,6 +83,7 @@ export const TaskProvider = ({ children }) => {
       notificationId: null,
       locationReminder: taskData.locationReminder || null,
       observers: taskData.observers || [],
+      allowedCommenters: taskData.allowedCommenters || [taskData.author || 'Mehdi', 'Professeur'],
       comments: taskData.comments || [],
     };
 
@@ -198,6 +199,24 @@ export const TaskProvider = ({ children }) => {
     await updateTask(taskId, { observers: updatedObservers });
   };
 
+  // Basculer l'autorisation d'un utilisateur à commenter la tâche
+  const toggleAllowedCommenter = async (taskId, userName) => {
+    const target = getTask(taskId);
+    if (!target) return;
+
+    const currentList = target.allowedCommenters || [target.author || 'Mehdi', 'Professeur'];
+    const exists = currentList.includes(userName);
+    let updatedList;
+    if (exists) {
+      updatedList = currentList.filter((u) => u !== userName);
+    } else {
+      updatedList = [...currentList, userName];
+    }
+
+    await updateTask(taskId, { allowedCommenters: updatedList });
+    return updatedList;
+  };
+
   // Ajouter un commentaire à la tâche
   const addCommentToTask = async (taskId, comment) => {
     const target = getTask(taskId);
@@ -234,6 +253,7 @@ export const TaskProvider = ({ children }) => {
         getTask,
         addObserver,
         removeObserver,
+        toggleAllowedCommenter,
         addCommentToTask,
       }}
     >

@@ -17,6 +17,7 @@ export const initialTasks = [
     reminderDate: null,
     locationReminder: null,
     observers: [], // Vide initialement comme sur la capture
+    allowedCommenters: ['Mehdi', 'Professeur'], // Utilisateurs autorisés à commenter
     comments: [],
   },
   {
@@ -46,6 +47,7 @@ export const initialTasks = [
       { id: 'obs_1', name: 'Professeur', role: 'responsible', addedAt: '16/11/2026' },
       { id: 'obs_2', name: 'Mehdi', role: 'assignee', addedAt: '16/11/2026' },
     ],
+    allowedCommenters: ['Professeur', 'Mehdi', 'Dr. Ben Ali'],
     comments: [
       {
         id: 'c1',
@@ -82,6 +84,7 @@ export const initialTasks = [
     observers: [
       { id: 'obs_3', name: 'Chef de projet', role: 'observer', addedAt: '15/11/2026' },
     ],
+    allowedCommenters: ['Sarah', 'Chef de projet'],
     comments: [
       {
         id: 'c3',

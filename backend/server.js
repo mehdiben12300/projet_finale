@@ -177,6 +177,7 @@ app.post('/api/tasks', (req, res) => {
     reminderDate,
     locationReminder,
     observers,
+    allowedCommenters,
     comments,
   } = req.body;
 
@@ -204,6 +205,9 @@ app.post('/api/tasks', (req, res) => {
     reminderDate: reminderDate || null,
     locationReminder: locationReminder || null,
     observers: Array.isArray(observers) ? observers : [],
+    allowedCommenters: Array.isArray(allowedCommenters)
+      ? allowedCommenters
+      : [author || 'Mehdi', 'Professeur'],
     comments: Array.isArray(comments) ? comments : [],
     updatedAt: new Date().toISOString(),
   };

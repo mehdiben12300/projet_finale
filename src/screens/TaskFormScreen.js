@@ -28,12 +28,13 @@ export const TaskFormScreen = ({ route, navigation }) => {
   const isEditing = mode === 'edit';
 
   const { addTask, updateTask, deleteTask, getTask } = useTasks();
-  const { currentUser } = useAuth();
+  const { currentUser, availableUsers } = useAuth();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState('Moyenne');
   const [status, setStatus] = useState('À faire');
+  const [allowedCommenters, setAllowedCommenters] = useState(['Mehdi', 'Professeur']);
 
   // 1. Photo Caméra / Galerie
   const [imageUri, setImageUri] = useState(null);
@@ -75,6 +76,9 @@ export const TaskFormScreen = ({ route, navigation }) => {
           setReminderDate(new Date(existing.reminderDate));
         }
         setLocationReminder(existing.locationReminder || null);
+        if (existing.allowedCommenters) {
+          setAllowedCommenters(existing.allowedCommenters);
+        }
       }
     }
   }, [isEditing, taskId]);
@@ -204,6 +208,7 @@ export const TaskFormScreen = ({ route, navigation }) => {
       apiFile,
       reminderDate: enableReminder ? reminderDate.toISOString() : null,
       locationReminder,
+      allowedCommenters,
       ...(isEditing ? {} : { author: currentUser ? currentUser.name : 'Mehdi' }),
     };
 
@@ -594,6 +599,41 @@ export const TaskFormScreen = ({ route, navigation }) => {
           )}
         </View>
 
+        {/* --- SECTION 6 : UTILISATEURS AUTORISÉS À COMMENTER --- */}
+        <View style={styles.featureSection}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="chatbubbles-outline" size={18} color="#0284C7" />
+            <Text style={styles.sectionTitle}>6. Qui peut commenter cette tâche ?</Text>
+          </View>
+          <Text style={styles.subHint}>
+            Sélectionnez les utilisateurs autorisés à commenter (les autres auront les commentaires bloqués) :
+          </Text>
+          <View style={styles.userChipsRow}>
+            {availableUsers.map((u) => {
+              const isSelected = allowedCommenters.includes(u.name);
+              return (
+                <TouchableOpacity
+                  key={u.id}
+                  style={[styles.userChip, isSelected && styles.userChipSelected]}
+                  onPress={() => {
+                    if (isSelected) {
+                      setAllowedCommenters(allowedCommenters.filter((name) => name !== u.name));
+                    } else {
+                      setAllowedCommenters([...allowedCommenters, u.name]);
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ fontSize: 13, marginRight: 4 }}>{u.avatar}</Text>
+                  <Text style={[styles.userChipText, isSelected && styles.userChipTextSelected]}>
+                    {isSelected ? '✓ ' : ''}{u.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
         {/* Boutons Enregistrer & Supprimer */}
         <View style={styles.actionsContainer}>
           <TouchableOpacity style={styles.saveBtn} onPress={handleSave} activeOpacity={0.8}>
@@ -828,6 +868,36 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#B45309',
+  },
+  userChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  userChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+  },
+  userChipSelected: {
+    backgroundColor: '#E0F2FE',
+    borderColor: '#0284C7',
+    borderWidth: 1.5,
+  },
+  userChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  userChipTextSelected: {
+    color: '#0284C7',
+    fontWeight: '700',
   },
   actionsContainer: {
     marginTop: 10,
