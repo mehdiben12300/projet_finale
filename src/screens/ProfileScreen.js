@@ -12,32 +12,50 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTasks } from '../context/TaskContext';
+import { useAuth } from '../context/AuthContext';
 import { saveTasksToStorage, initialTasks } from '../storage/asyncStorage';
+import { getApiUrl } from '../config/api';
 
 export const ProfileScreen = () => {
-  const { stats } = useTasks();
+  const { stats, triggerSync } = useTasks();
+  const { currentUser, availableUsers, switchUser } = useAuth();
 
   const performReset = async () => {
-    await saveTasksToStorage(initialTasks);
-    if (Platform.OS === 'web') {
-      window.alert('Données réinitialisées. Rafraîchissez la page (F5) pour recharger.');
-    } else {
-      Alert.alert(
-        'Succès',
-        'Données réinitialisées. Redémarrez ou rafraîchissez pour recharger.'
-      );
+    try {
+      // 1. Réinitialiser localement
+      await saveTasksToStorage(initialTasks);
+
+      // 2. Réinitialiser sur le backend API
+      try {
+        await fetch(`${getApiUrl()}/tasks/reset`, { method: 'POST' });
+      } catch (err) {
+        console.warn('Backend reset fail:', err);
+      }
+
+      // 3. Déclencher synchronisation
+      await triggerSync();
+
+      const msg = 'Base de données réinitialisée aux 4 tâches de démonstration complètes !';
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Succès', msg);
+      }
+    } catch (e) {
+      console.error(e);
     }
   };
 
   const handleResetData = () => {
+    const question = 'Voulez-vous restaurer les 4 tâches de démonstration complètes (multi-utilisateurs & permissions) ?';
     if (Platform.OS === 'web') {
-      if (window.confirm('Voulez-vous restaurer les 4 tâches de démonstration complètes ?')) {
+      if (window.confirm(question)) {
         performReset();
       }
     } else {
       Alert.alert(
         'Réinitialiser les données',
-        'Voulez-vous restaurer les 4 tâches de démonstration complètes ?',
+        question,
         [
           { text: 'Annuler', style: 'cancel' },
           { text: 'Réinitialiser', style: 'destructive', onPress: performReset },
@@ -48,29 +66,73 @@ export const ProfileScreen = () => {
 
   const featuresList = [
     { icon: 'camera', color: '#0284C7', title: 'Caméra & Galerie', desc: 'Capture de photo directe et sélection avec expo-image-picker' },
-    { icon: 'document-text', color: '#6366F1', title: 'Fichiers locaux', desc: 'Sélection de documents PDF/Word avec expo-document-picker & partage' },
+    { icon: 'document-text', color: '#6366F1', title: 'Fichiers locaux & PDF', desc: 'Sélection de documents avec expo-document-picker & prévisualisation' },
     { icon: 'cloud-download', color: '#059669', title: 'Appel API Fichiers', desc: 'Téléchargement de documents distants via expo-file-system' },
     { icon: 'alarm', color: '#D97706', title: 'Rappels Date & Heure', desc: 'Notifications locales programmées avec expo-notifications' },
     { icon: 'location', color: '#DC2626', title: 'Carte OpenStreetMap & GPS', desc: 'Sélection interactive sur Leaflet & calcul de proximité GPS' },
-    { icon: 'chatbubbles', color: '#8B5CF6', title: 'Observateurs & Commentaires', desc: 'Discussions d’observateurs avec notification instantanée' },
+    { icon: 'chatbubbles', color: '#8B5CF6', title: '3 Niveaux de Permissions', desc: 'Créateur (total), Invité (chat/lecture), Visiteur (lecture seule)' },
   ];
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <ScrollView contentContainerStyle={styles.container}>
-        {/* En-tête profil */}
+        {/* En-tête profil actif */}
         <View style={styles.profileHeader}>
           <View style={styles.avatar}>
-            <Ionicons name="school" size={40} color="#0284C7" />
+            <Text style={{ fontSize: 36 }}>{currentUser?.avatar || '👤'}</Text>
           </View>
-          <Text style={styles.userName}>Projet Final — MyTasks Pro</Text>
-          <Text style={styles.userRole}>Étudiant / Développeur Mobile</Text>
+          <Text style={styles.userName}>{currentUser?.name || 'Utilisateur'}</Text>
+          <View style={styles.roleBadge}>
+            <Text style={styles.roleBadgeText}>{currentUser?.role || 'Collaborateur'}</Text>
+          </View>
+          <Text style={styles.userSubText}>
+            Connecté pour tester les permissions et fonctionnalités
+          </Text>
+        </View>
+
+        {/* Changer d'utilisateur de test */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>👥 Changer d'utilisateur (Test des Rôles)</Text>
+          <Text style={styles.cardSubtitle}>
+            Sélectionnez un profil pour voir comment l'application s'adapte selon ses droits :
+          </Text>
+          <View style={{ gap: 8, marginTop: 8 }}>
+            {availableUsers.map((user) => {
+              const isSelected = currentUser?.name?.toLowerCase() === user.name?.toLowerCase();
+              return (
+                <TouchableOpacity
+                  key={user.id}
+                  style={[styles.userOptionItem, isSelected && styles.userOptionItemSelected]}
+                  onPress={() => switchUser(user)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ fontSize: 24, marginRight: 10 }}>{user.avatar}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.userOptionName, isSelected && styles.userOptionNameSelected]}>
+                      {user.name}
+                    </Text>
+                    <Text style={styles.userOptionDesc}>
+                      {user.name === 'Mehdi' && 'Créateur de "Debug obs" • Invité sur Tâche 2 & 3'}
+                      {user.name === 'Professeur' && 'Créateur de "Rapport" • Invité sur Tâche 1'}
+                      {user.name === 'Sarah' && 'Créateur de "Test Capteurs" • Invité sur Tâche 1 & 4'}
+                      {user.name === 'Dr. Ben Ali' && 'Créateur de "Audit Sécurité" • Invité sur Tâche 3'}
+                    </Text>
+                  </View>
+                  {isSelected ? (
+                    <Ionicons name="checkmark-circle" size={22} color="#0284C7" />
+                  ) : (
+                    <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
 
         {/* Statistiques */}
-        <View style={styles.statsCard}>
-          <Text style={styles.statsCardTitle}>Résumé des tâches</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>📊 Résumé global des tâches</Text>
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
               <Text style={styles.statNumber}>{stats.total}</Text>
@@ -88,8 +150,8 @@ export const ProfileScreen = () => {
         </View>
 
         {/* Synthèse des 6 fonctionnalités demandées */}
-        <View style={styles.featuresCard}>
-          <Text style={styles.featuresTitle}>6 Fonctionnalités implémentées</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>⚙️ 6 Fonctionnalités implémentées</Text>
           <View style={{ gap: 12, marginTop: 10 }}>
             {featuresList.map((f, idx) => (
               <View key={idx} style={styles.featureItem}>
@@ -112,7 +174,7 @@ export const ProfileScreen = () => {
           activeOpacity={0.8}
         >
           <Ionicons name="refresh-outline" size={18} color="#DC2626" />
-          <Text style={styles.resetButtonText}>Réinitialiser les tâches d'exemple</Text>
+          <Text style={styles.resetButtonText}>Réinitialiser la base de données de test</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -131,7 +193,7 @@ const styles = StyleSheet.create({
   },
   profileHeader: {
     alignItems: 'center',
-    marginBottom: 18,
+    marginBottom: 16,
   },
   avatar: {
     width: 72,
@@ -141,18 +203,33 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
+    borderWidth: 2,
+    borderColor: '#BAE6FD',
   },
   userName: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '800',
     color: '#0F172A',
   },
-  userRole: {
-    fontSize: 13,
-    color: '#64748B',
-    marginTop: 2,
+  roleBadge: {
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+    marginTop: 4,
   },
-  statsCard: {
+  roleBadgeText: {
+    color: '#0284C7',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  userSubText: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
     padding: 14,
@@ -160,15 +237,47 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     marginBottom: 14,
   },
-  statsCardTitle: {
+  cardTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: '#0F172A',
-    marginBottom: 10,
+    marginBottom: 4,
+  },
+  cardSubtitle: {
+    fontSize: 12,
+    color: '#64748B',
+    marginBottom: 8,
+  },
+  userOptionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  userOptionItemSelected: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#0284C7',
+  },
+  userOptionName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  userOptionNameSelected: {
+    color: '#0284C7',
+  },
+  userOptionDesc: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
   },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
+    marginTop: 6,
   },
   statItem: {
     alignItems: 'center',
@@ -182,19 +291,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#64748B',
     marginTop: 2,
-  },
-  featuresCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 18,
-  },
-  featuresTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#0F172A',
   },
   featureItem: {
     flexDirection: 'row',
@@ -227,6 +323,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEE2E2',
     paddingVertical: 12,
     borderRadius: 10,
+    marginTop: 4,
   },
   resetButtonText: {
     color: '#DC2626',

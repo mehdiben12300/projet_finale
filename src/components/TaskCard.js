@@ -21,11 +21,26 @@ const getStatusColor = (status) => {
   return { bg: '#E0F2FE', text: '#0284C7' };
 };
 
-export const TaskCard = ({ task, onPress }) => {
+export const TaskCard = ({ task, currentUser, onPress }) => {
   const priorityColor = getPriorityColor(task.priority);
   const statusColor = getStatusColor(task.status);
 
   const commentsCount = (task.comments && task.comments.length) || 0;
+
+  // Calcul du rôle de l'utilisateur connecté sur cette tâche
+  const isCreator = Boolean(
+    currentUser &&
+      task.author &&
+      currentUser.name.toLowerCase() === task.author.toLowerCase()
+  );
+
+  const isInvited = Boolean(
+    currentUser &&
+      task.observers &&
+      task.observers.some(
+        (o) => o.name && o.name.toLowerCase() === currentUser.name.toLowerCase()
+      )
+  );
 
   return (
     <TouchableOpacity
@@ -60,14 +75,46 @@ export const TaskCard = ({ task, onPress }) => {
               {task.status}
             </Text>
           </View>
+
+          {/* Badge Rôle de l'utilisateur actif */}
+          {currentUser && (
+            <View
+              style={[
+                styles.badge,
+                isCreator
+                  ? { backgroundColor: '#E0F2FE' }
+                  : isInvited
+                  ? { backgroundColor: '#DCFCE7' }
+                  : { backgroundColor: '#F1F5F9' },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.badgeText,
+                  {
+                    color: isCreator
+                      ? '#0284C7'
+                      : isInvited
+                      ? '#16A34A'
+                      : '#64748B',
+                    fontWeight: '700',
+                  },
+                ]}
+              >
+                {isCreator ? '👑 Créateur' : isInvited ? '🤝 Invité' : '👁️ Visiteur'}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Badges indicateurs des fonctionnalités avancées */}
         <View style={styles.featuresRow}>
           {task.author && (
-            <View style={[styles.featurePill, { backgroundColor: '#F0F9FF' }]}>
-              <Ionicons name="person" size={12} color="#0284C7" />
-              <Text style={[styles.featurePillText, { color: '#0369A1' }]}>{task.author}</Text>
+            <View style={[styles.featurePill, { backgroundColor: '#F8FAFC' }]}>
+              <Ionicons name="person-outline" size={12} color="#0284C7" />
+              <Text style={[styles.featurePillText, { color: '#0369A1' }]}>
+                Par {task.author}
+              </Text>
             </View>
           )}
 
@@ -75,7 +122,7 @@ export const TaskCard = ({ task, onPress }) => {
             <View style={[styles.featurePill, { backgroundColor: '#F5F3FF' }]}>
               <Ionicons name="people" size={12} color="#7C3AED" />
               <Text style={[styles.featurePillText, { color: '#6D28D9' }]}>
-                {task.observers.length} obs.
+                {task.observers.length} invité{task.observers.length > 1 ? 's' : ''}
               </Text>
             </View>
           )}
@@ -188,16 +235,17 @@ const styles = StyleSheet.create({
   badgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    flexWrap: 'wrap',
+    gap: 6,
     marginBottom: 8,
   },
   badge: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 12,
   },
   badgeText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   featuresRow: {

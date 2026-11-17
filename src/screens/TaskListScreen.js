@@ -9,6 +9,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   StatusBar,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTasks } from '../context/TaskContext';
@@ -18,11 +19,30 @@ import StatsOverview from '../components/StatsOverview';
 
 export const TaskListScreen = ({ navigation }) => {
   const { tasks, loading, stats, syncStatus, triggerSync } = useTasks();
-  const { currentUser } = useAuth();
+  const { currentUser, availableUsers, switchUser } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('Toutes'); // 'Toutes' | 'À faire' | 'Terminées'
   const [scopeFilter, setScopeFilter] = useState('all'); // 'all' | 'mine' | 'invited'
+
+  // Comptage par catégorie pour l'utilisateur connecté
+  const myCreatedCount = useMemo(() => {
+    if (!currentUser) return 0;
+    return tasks.filter(
+      (t) => t.author && t.author.toLowerCase() === currentUser.name.toLowerCase()
+    ).length;
+  }, [tasks, currentUser]);
+
+  const myInvitedCount = useMemo(() => {
+    if (!currentUser) return 0;
+    return tasks.filter(
+      (t) =>
+        t.observers &&
+        t.observers.some(
+          (o) => o.name && o.name.toLowerCase() === currentUser.name.toLowerCase()
+        )
+    ).length;
+  }, [tasks, currentUser]);
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
@@ -44,7 +64,7 @@ export const TaskListScreen = ({ navigation }) => {
         }
       }
 
-      // Filtre statut : gère 'Toutes', 'À faire', et 'Terminées' (avec ou sans 's')
+      // Filtre statut : gère 'Toutes', 'À faire', et 'Terminées'
       let matchesFilter = true;
       if (activeFilter === 'À faire') {
         matchesFilter = task.status === 'À faire';
@@ -117,10 +137,61 @@ export const TaskListScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
+        {/* ======================================================== */}
+        {/* BARRE DE CHANGEMENT RAPIDE DE L'UTILISATEUR ACTIF        */}
+        {/* ======================================================== */}
+        <View style={styles.userSwitcherCard}>
+          <View style={styles.userSwitcherHeader}>
+            <Text style={styles.userSwitcherLabel}>👤 Session active :</Text>
+            <View style={styles.activeUserBadge}>
+              <Text style={styles.activeUserBadgeText}>
+                {currentUser?.avatar} {currentUser?.name}
+              </Text>
+            </View>
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.userChipsRow}
+          >
+            {availableUsers.map((u) => {
+              const isSelected =
+                currentUser?.name?.toLowerCase() === u.name?.toLowerCase();
+              return (
+                <TouchableOpacity
+                  key={u.id}
+                  style={[styles.userChip, isSelected && styles.userChipSelected]}
+                  onPress={() => switchUser(u)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.userChipAvatar}>{u.avatar}</Text>
+                  <Text
+                    style={[
+                      styles.userChipName,
+                      isSelected && styles.userChipNameSelected,
+                    ]}
+                  >
+                    {u.name}
+                  </Text>
+                  {isSelected && (
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={14}
+                      color="#0284C7"
+                      style={{ marginLeft: 3 }}
+                    />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+
         {/* Statistiques */}
         <StatsOverview stats={stats} />
 
-        {/* Bascule Portée : Toutes les tâches vs Mes tâches (Observateur/Auteur) */}
+        {/* Bascule Portée : Toutes vs Mes Créations vs Invité (Collab) */}
         <View style={styles.scopeTabsContainer}>
           <TouchableOpacity
             style={[styles.scopeTab, scopeFilter === 'all' && styles.scopeTabActive]}
@@ -138,7 +209,7 @@ export const TaskListScreen = ({ navigation }) => {
                 scopeFilter === 'all' && styles.scopeTabTextActive,
               ]}
             >
-              Toutes
+              Toutes ({tasks.length})
             </Text>
           </TouchableOpacity>
 
@@ -148,7 +219,7 @@ export const TaskListScreen = ({ navigation }) => {
             activeOpacity={0.7}
           >
             <Ionicons
-              name="person-outline"
+              name="key-outline"
               size={13}
               color={scopeFilter === 'mine' ? '#0284C7' : '#64748B'}
             />
@@ -158,7 +229,7 @@ export const TaskListScreen = ({ navigation }) => {
                 scopeFilter === 'mine' && styles.scopeTabTextActive,
               ]}
             >
-              Créées ({currentUser ? currentUser.name : ''})
+              Créées ({myCreatedCount})
             </Text>
           </TouchableOpacity>
 
@@ -168,7 +239,7 @@ export const TaskListScreen = ({ navigation }) => {
             activeOpacity={0.7}
           >
             <Ionicons
-              name="people-outline"
+              name="chatbubbles-outline"
               size={13}
               color={scopeFilter === 'invited' ? '#0284C7' : '#64748B'}
             />
@@ -178,14 +249,14 @@ export const TaskListScreen = ({ navigation }) => {
                 scopeFilter === 'invited' && styles.scopeTabTextActive,
               ]}
             >
-              Invité
+              Invité ({myInvitedCount})
             </Text>
           </TouchableOpacity>
         </View>
 
         {/* Barre de recherche */}
         <View style={styles.searchContainer}>
-          <Ionicons name="search-outline" size={18} color="#94A3B8" style={styles.searchIcon} />
+          <Ionicons name="search" size={18} color="#94A3B8" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
             placeholder="Rechercher une tâche..."
@@ -229,6 +300,7 @@ export const TaskListScreen = ({ navigation }) => {
           renderItem={({ item }) => (
             <TaskCard
               task={item}
+              currentUser={currentUser}
               onPress={() => navigation.navigate('TaskDetail', { taskId: item.id })}
             />
           )}
@@ -238,6 +310,11 @@ export const TaskListScreen = ({ navigation }) => {
             <View style={styles.emptyContainer}>
               <Ionicons name="clipboard-outline" size={48} color="#CBD5E1" />
               <Text style={styles.emptyText}>Aucune tâche trouvée</Text>
+              {scopeFilter === 'invited' && (
+                <Text style={{ fontSize: 12, color: '#94A3B8', marginTop: 4 }}>
+                  {currentUser?.name} n'est invité sur aucune tâche dans cette vue.
+                </Text>
+              )}
             </View>
           }
         />
@@ -283,6 +360,67 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#64748B',
   },
+  userSwitcherCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  userSwitcherHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  userSwitcherLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  activeUserBadge: {
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  activeUserBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  userChipsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  userChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  userChipSelected: {
+    backgroundColor: '#E0F2FE',
+    borderColor: '#0284C7',
+  },
+  userChipAvatar: {
+    fontSize: 14,
+    marginRight: 4,
+  },
+  userChipName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  userChipNameSelected: {
+    color: '#0284C7',
+    fontWeight: '700',
+  },
   scopeTabsContainer: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
@@ -300,13 +438,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 7,
     borderRadius: 8,
-    gap: 6,
+    gap: 5,
   },
   scopeTabActive: {
     backgroundColor: '#E0F2FE',
   },
   scopeTabText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: '#64748B',
   },
@@ -333,17 +471,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   searchIcon: {
     marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 13,
     color: '#0F172A',
     padding: 0,
   },
@@ -352,11 +490,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#E2E8F0',
     borderRadius: 12,
     padding: 3,
-    marginBottom: 14,
+    marginBottom: 12,
   },
   filterTab: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 7,
     borderRadius: 10,
     alignItems: 'center',
   },
@@ -364,7 +502,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0284C7',
   },
   filterTabText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: '#64748B',
   },
@@ -377,12 +515,13 @@ const styles = StyleSheet.create({
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 50,
+    paddingVertical: 40,
   },
   emptyText: {
-    marginTop: 12,
+    marginTop: 10,
     fontSize: 14,
     color: '#94A3B8',
+    fontWeight: '600',
   },
   loadingContainer: {
     flex: 1,
