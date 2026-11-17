@@ -52,12 +52,11 @@ export const TaskDetailScreen = ({ route, navigation }) => {
     deleteTask,
     addObserver,
     removeObserver,
-    toggleAllowedCommenter,
     addCommentToTask,
     syncStatus,
     triggerSync,
   } = useTasks();
-  const { currentUser, availableUsers, switchUser } = useAuth();
+  const { currentUser, availableUsers } = useAuth();
 
   const task = getTask(taskId);
 
@@ -102,29 +101,32 @@ export const TaskDetailScreen = ({ route, navigation }) => {
   const statusColor = getStatusColor(task.status);
   const observers = task.observers || [];
   const comments = task.comments || [];
-  const allowedCommenters = task.allowedCommenters || ['Mehdi', 'Professeur'];
-  const isAllowedToComment =
-    allowedCommenters.includes(currentUser.name) ||
-    (task.author && task.author === currentUser.name);
 
-  // --- SYSTÈME DE PERMISSIONS (CRÉATEUR / INVITÉS / NON-INVITÉS) ---
-  // 1. Est le créateur / auteur de la tâche (A tous les droits) :
+  // --- SYSTÈME DE PERMISSIONS STRICT (CRÉATEUR / ASSIGNÉ / NON-ASSIGNÉ) ---
+  // 1. Est le créateur / auteur de la tâche (Possède tous les droits de modification) :
   const isCreator = Boolean(
-    task.author && currentUser.name && task.author.toLowerCase() === currentUser.name.toLowerCase()
+    task.author &&
+      currentUser &&
+      currentUser.name &&
+      task.author.toLowerCase() === currentUser.name.toLowerCase()
   );
 
-  // 2. Est un collaborateur invité sur la tâche (Discussion autorisée, fichiers en lecture seule) :
+  // 2. Est un collaborateur invité / assigné (Discussion autorisée, fichiers & capteurs en lecture seule) :
   const isInvited = Boolean(
-    observers.some((obs) => obs.name && obs.name.toLowerCase() === currentUser.name.toLowerCase())
+    currentUser &&
+      currentUser.name &&
+      observers.some(
+        (obs) => obs.name && obs.name.toLowerCase() === currentUser.name.toLowerCase()
+      )
   );
 
-  // 3. Simple visiteur non-invité (Consultation seule, commentaires désactivés) :
+  // 3. Simple visiteur non-assigné (Consultation seule absolue, aucune modification, commentaires verrouillés) :
   const isVisitor = !isCreator && !isInvited;
 
-  // Seul le créateur a le droit de modifier la tâche, les fichiers, la carte et les rappels :
+  // Seul le créateur a le droit de modifier les fichiers, la carte, les rappels et les observateurs :
   const canEditTask = isCreator;
 
-  // Le créateur et les invités peuvent participer aux discussions / commentaires :
+  // Le créateur et les collaborateurs assignés peuvent participer aux discussions :
   const canComment = isCreator || isInvited;
 
   // --- 1. PIÈCES JOINTES (Photo & Fichier) ---
@@ -218,22 +220,12 @@ export const TaskDetailScreen = ({ route, navigation }) => {
   };
 
   const handleRemovePhoto = async () => {
-    if (!canEditTask) {
-      const msg = `Action refusée : Seul le créateur de cette tâche (${task.author}) peut supprimer des pièces jointes.`;
-      if (Platform.OS === 'web') window.alert(msg);
-      else Alert.alert('Accès refusé', msg);
-      return;
-    }
+    if (!canEditTask) return;
     await updateTask(task.id, { imageUri: null });
   };
 
   const handleRemoveFile = async () => {
-    if (!canEditTask) {
-      const msg = `Action refusée : Seul le créateur de cette tâche (${task.author}) peut supprimer des pièces jointes.`;
-      if (Platform.OS === 'web') window.alert(msg);
-      else Alert.alert('Accès refusé', msg);
-      return;
-    }
+    if (!canEditTask) return;
     await updateTask(task.id, { attachedFile: null });
   };
 
@@ -248,13 +240,13 @@ export const TaskDetailScreen = ({ route, navigation }) => {
   // --- 2. OBSERVATEURS (Suiveurs) ---
   const handleAddObserver = async () => {
     if (!canEditTask) {
-      const msg = `Action refusée : Seul le créateur de cette tâche (${task.author}) a le droit d'inviter des collaborateurs.`;
+      const msg = `Action refusée : Seul le créateur de cette tâche (${task.author}) a le droit d'assigner des collaborateurs.`;
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('Accès refusé', msg);
       return;
     }
 
-    const nameToAdd = followerName.trim() || currentUser.name;
+    const nameToAdd = followerName.trim();
     if (!nameToAdd) {
       Alert.alert('Erreur', 'Veuillez saisir le nom du suiveur.');
       return;
@@ -271,7 +263,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
   // --- 3. POSITIONS GPS (Capturer) ---
   const handleCaptureGps = async () => {
     if (!canEditTask) {
-      const msg = `Action refusée : Seul le créateur de cette tâche (${task.author}) a le droit de modifier la position géographique.`;
+      const msg = `Action refusée : Seul le créateur de cette tâche (${task.author}) a le droit de définir la position GPS.`;
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('Accès refusé', msg);
       return;
@@ -347,7 +339,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
   // --- PROGRAMMATION DE RAPPEL DATE & HEURE ---
   const handleSetReminderPreset = async (hoursFromNow) => {
     if (!canEditTask) {
-      const msg = "Action refusée : Seuls les membres assignés peuvent reprogrammer le rappel de cette tâche.";
+      const msg = "Action refusée : Seul le créateur de cette tâche a le droit de programmer le rappel.";
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('Accès refusé', msg);
       return;
@@ -424,7 +416,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         {/* ======================================================== */}
-        {/* CARTE 1 : TÂCHE PRINCIPALE AVEC BOUTON ROUE DENTÉE ⚙️    */}
+        {/* CARTE 1 : TÂCHE PRINCIPALE AVEC BOUTON ROUE DENTÉE ⚙️     */}
         {/* ======================================================== */}
         <View style={styles.mainTaskCard}>
           <View style={[styles.accentLeftBar, { backgroundColor: priorityColor.border }]} />
@@ -478,18 +470,19 @@ export const TaskDetailScreen = ({ route, navigation }) => {
                   styles.userRoleOnTaskText,
                   isCreator && { color: '#0284C7', fontWeight: '700' },
                   isInvited && { color: '#16A34A', fontWeight: '700' },
+                  isVisitor && { color: '#64748B', fontWeight: '600' },
                 ]}
               >
                 {isCreator
                   ? 'Vous êtes le créateur (Droits complets : fichiers, carte, rappels)'
                   : isInvited
-                  ? `Invité par ${task.author} (Discussion autorisée • Fichiers en lecture seule)`
-                  : `Consultation seule (Créée par ${task.author} • Non invité)`}
+                  ? `Assigné par ${task.author} (Discussion active • Fichiers en lecture seule)`
+                  : `Consultation seule (Créée par ${task.author} • Non assigné)`}
               </Text>
             </View>
           </View>
 
-          {/* Bouton flottant bleu roue dentée ⚙️ (visible uniquement pour le créateur de la tâche) */}
+          {/* Bouton flottant bleu roue dentée ⚙️ (visible UNIQUEMENT pour le créateur de la tâche) */}
           {isCreator && (
             <TouchableOpacity
               style={styles.gearFloatingBtn}
@@ -511,30 +504,40 @@ export const TaskDetailScreen = ({ route, navigation }) => {
               <Text style={styles.cardSectionTitle}>Pièces jointes</Text>
             </View>
 
-            <View style={styles.headerPillButtons}>
-              <TouchableOpacity
-                style={styles.pillActionBtn}
-                onPress={handleAddFile}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.pillActionBtnText}>+ Fichier</Text>
-              </TouchableOpacity>
+            {/* Seul le créateur a les boutons pour ajouter des fichiers/photos */}
+            {isCreator ? (
+              <View style={styles.headerPillButtons}>
+                <TouchableOpacity
+                  style={styles.pillActionBtn}
+                  onPress={handleAddFile}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.pillActionBtnText}>+ Fichier</Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.pillActionBtn}
-                onPress={handleAddPhoto}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="camera" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                <Text style={styles.pillActionBtnText}>Photo</Text>
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity
+                  style={styles.pillActionBtn}
+                  onPress={handleAddPhoto}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="camera" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                  <Text style={styles.pillActionBtnText}>Photo</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.readOnlyBadge}>
+                <Ionicons name="lock-closed" size={12} color="#64748B" />
+                <Text style={styles.readOnlyBadgeText}>Lecture seule</Text>
+              </View>
+            )}
           </View>
 
           {/* Contenu des pièces jointes */}
           {!task.imageUri && !task.attachedFile && !task.apiFile ? (
             <Text style={styles.cardEmptyItalicText}>
-              Aucun fichier. Ajoutez un document ou une photo (10 Mo max).
+              {isCreator
+                ? 'Aucun fichier. Ajoutez un document ou une photo (10 Mo max).'
+                : 'Aucune pièce jointe ajoutée pour cette tâche.'}
             </Text>
           ) : (
             <View style={{ gap: 10, marginTop: 10 }}>
@@ -546,9 +549,11 @@ export const TaskDetailScreen = ({ route, navigation }) => {
                     <Text style={styles.attachmentName}>Photo attachée</Text>
                     <Text style={styles.attachmentSub}>Capture caméra / galerie</Text>
                   </View>
-                  <TouchableOpacity onPress={handleRemovePhoto}>
-                    <Ionicons name="trash-outline" size={18} color="#DC2626" />
-                  </TouchableOpacity>
+                  {isCreator && (
+                    <TouchableOpacity onPress={handleRemovePhoto}>
+                      <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
 
@@ -567,8 +572,26 @@ export const TaskDetailScreen = ({ route, navigation }) => {
                       {(task.attachedFile.size / 1024).toFixed(1)} Ko • Ouvrir
                     </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={handleRemoveFile}>
-                    <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                  {isCreator && (
+                    <TouchableOpacity onPress={handleRemoveFile}>
+                      <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+
+              {/* Fichier API */}
+              {task.apiFile && (
+                <View style={styles.attachmentItem}>
+                  <Ionicons name="cloud-download" size={24} color="#059669" />
+                  <TouchableOpacity
+                    style={{ flex: 1, marginHorizontal: 8 }}
+                    onPress={() => handleOpenFile(task.apiFile.url)}
+                  >
+                    <Text style={styles.attachmentName} numberOfLines={1}>
+                      {task.apiFile.name}
+                    </Text>
+                    <Text style={styles.attachmentSub}>Document API distant • Télécharger</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -576,7 +599,6 @@ export const TaskDetailScreen = ({ route, navigation }) => {
           )}
         </View>
 
-        {/* ======================================================== */}
         {/* ======================================================== */}
         {/* CARTE 3 : OBSERVATEURS (+ Ajouter / observer / assignee) */}
         {/* ======================================================== */}
@@ -588,16 +610,16 @@ export const TaskDetailScreen = ({ route, navigation }) => {
             </View>
           </View>
 
-          {observers.length === 0 && (
-            <Text style={styles.cardEmptyItalicText}>
-              Aucun observateur. Ajoutez un suiveur.
-            </Text>
-          )}
-
-          {/* Saisie observateur (Réservée au créateur de la tâche) */}
+          {/* Formulaire d'ajout d'observateur : réservé UNIQUEMENT au créateur */}
           {isCreator ? (
             <View>
-              {/* Ligne saisie : Nom du suiveur + Bouton Ajouter */}
+              <Text style={styles.cardEmptyItalicText}>
+                {observers.length === 0
+                  ? 'Aucun observateur. Ajoutez un suiveur.'
+                  : 'Assignez des collaborateurs à cette tâche :'}
+              </Text>
+
+              {/* Ligne saisie observateur + bouton Ajouter */}
               <View style={styles.followerInputRow}>
                 <TextInput
                   style={styles.followerTextInput}
@@ -641,7 +663,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
               {/* Invitations rapides par clic pour le créateur */}
               <View style={{ marginTop: 6, marginBottom: 8 }}>
                 <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>
-                  Inviter rapidement un utilisateur :
+                  Assigner rapidement un utilisateur :
                 </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                   {availableUsers
@@ -683,7 +705,9 @@ export const TaskDetailScreen = ({ route, navigation }) => {
             </View>
           ) : (
             <Text style={[styles.cardEmptyItalicText, { marginVertical: 6 }]}>
-              Liste des collaborateurs invités par {task.author} :
+              {observers.length === 0
+                ? 'Aucun collaborateur assigné par le créateur.'
+                : `Collaborateur${observers.length > 1 ? 's' : ''} assigné${observers.length > 1 ? 's' : ''} par ${task.author} :`}
             </Text>
           )}
 
@@ -718,37 +742,56 @@ export const TaskDetailScreen = ({ route, navigation }) => {
               <Text style={styles.cardSectionTitle}>Positions</Text>
             </View>
 
-            <View style={styles.headerPillButtons}>
+            {/* Seul le créateur a le bouton "Capturer" pour définir le GPS */}
+            {isCreator ? (
+              <View style={styles.headerPillButtons}>
+                <TouchableOpacity
+                  style={styles.pillActionBtn}
+                  onPress={() => setShowMapModal(true)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="map" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                  <Text style={styles.pillActionBtnText}>Carte</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.pillActionBtn}
+                  onPress={handleCaptureGps}
+                  disabled={capturingGps}
+                  activeOpacity={0.8}
+                >
+                  {capturingGps ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="locate" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                      <Text style={styles.pillActionBtnText}>Capturer</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : task.locationReminder ? (
               <TouchableOpacity
                 style={styles.pillActionBtn}
                 onPress={() => setShowMapModal(true)}
                 activeOpacity={0.8}
               >
                 <Ionicons name="map" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                <Text style={styles.pillActionBtnText}>Carte</Text>
+                <Text style={styles.pillActionBtnText}>Voir Carte</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.pillActionBtn}
-                onPress={handleCaptureGps}
-                disabled={capturingGps}
-                activeOpacity={0.8}
-              >
-                {capturingGps ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <>
-                    <Ionicons name="locate" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                    <Text style={styles.pillActionBtnText}>Capturer</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
+            ) : (
+              <View style={styles.readOnlyBadge}>
+                <Ionicons name="lock-closed" size={12} color="#64748B" />
+                <Text style={styles.readOnlyBadgeText}>Lecture seule</Text>
+              </View>
+            )}
           </View>
 
           {!task.locationReminder ? (
             <Text style={styles.cardEmptyItalicText}>
-              Aucune position. Capturez la position actuelle (GPS) ou sélectionnez sur la carte.
+              {isCreator
+                ? 'Aucune position. Capturez la position actuelle (GPS) ou sélectionnez sur la carte.'
+                : 'Aucune position géographique définie pour cette tâche.'}
             </Text>
           ) : (
             <View>
@@ -768,43 +811,47 @@ export const TaskDetailScreen = ({ route, navigation }) => {
                 >
                   <Ionicons name="map" size={18} color="#0284C7" />
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={{ padding: 4, marginLeft: 4 }}
-                  onPress={async () => {
-                    await updateTask(task.id, { locationReminder: null });
-                  }}
-                >
-                  <Ionicons name="trash-outline" size={18} color="#DC2626" />
-                </TouchableOpacity>
+                {isCreator && (
+                  <TouchableOpacity
+                    style={{ padding: 4, marginLeft: 4 }}
+                    onPress={async () => {
+                      await updateTask(task.id, { locationReminder: null });
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                  </TouchableOpacity>
+                )}
               </View>
 
-              {/* Boutons de test de détection de proximité */}
-              <View style={styles.proximityButtonsRow}>
-                <TouchableOpacity
-                  style={styles.checkProximityBtn}
-                  onPress={handleCheckProximity}
-                  disabled={checkingProximity}
-                  activeOpacity={0.8}
-                >
-                  {checkingProximity ? (
-                    <ActivityIndicator size="small" color="#0284C7" />
-                  ) : (
-                    <>
-                      <Ionicons name="radio" size={14} color="#0284C7" style={{ marginRight: 4 }} />
-                      <Text style={styles.checkProximityBtnText}>Vérifier GPS</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+              {/* Boutons de test de détection de proximité : masqués pour les non-assignés */}
+              {!isVisitor && (
+                <View style={styles.proximityButtonsRow}>
+                  <TouchableOpacity
+                    style={styles.checkProximityBtn}
+                    onPress={handleCheckProximity}
+                    disabled={checkingProximity}
+                    activeOpacity={0.8}
+                  >
+                    {checkingProximity ? (
+                      <ActivityIndicator size="small" color="#0284C7" />
+                    ) : (
+                      <>
+                        <Ionicons name="radio" size={14} color="#0284C7" style={{ marginRight: 4 }} />
+                        <Text style={styles.checkProximityBtnText}>Vérifier GPS</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.simulateArrivalBtn}
-                  onPress={handleSimulateArrival}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="notifications-outline" size={14} color="#16A34A" style={{ marginRight: 4 }} />
-                  <Text style={styles.simulateArrivalBtnText}>Simuler arrivée (Alerte)</Text>
-                </TouchableOpacity>
-              </View>
+                  <TouchableOpacity
+                    style={styles.simulateArrivalBtn}
+                    onPress={handleSimulateArrival}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="notifications-outline" size={14} color="#16A34A" style={{ marginRight: 4 }} />
+                    <Text style={styles.simulateArrivalBtnText}>Simuler arrivée (Alerte)</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           )}
         </View>
@@ -819,16 +866,24 @@ export const TaskDetailScreen = ({ route, navigation }) => {
               <Text style={styles.cardSectionTitle}>Rappel Date & Heure</Text>
             </View>
 
-            <TouchableOpacity
-              style={[styles.pillActionBtn, { backgroundColor: '#D97706' }]}
-              onPress={() => setShowReminderModal(true)}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="calendar" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-              <Text style={styles.pillActionBtnText}>
-                {task.reminderDate ? 'Modifier' : '+ Définir'}
-              </Text>
-            </TouchableOpacity>
+            {/* Seul le créateur peut définir ou modifier le rappel */}
+            {isCreator ? (
+              <TouchableOpacity
+                style={[styles.pillActionBtn, { backgroundColor: '#D97706' }]}
+                onPress={() => setShowReminderModal(true)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="calendar" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                <Text style={styles.pillActionBtnText}>
+                  {task.reminderDate ? 'Modifier' : '+ Définir'}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.readOnlyBadge}>
+                <Ionicons name="lock-closed" size={12} color="#64748B" />
+                <Text style={styles.readOnlyBadgeText}>Lecture seule</Text>
+              </View>
+            )}
           </View>
 
           {task.reminderDate ? (
@@ -840,36 +895,42 @@ export const TaskDetailScreen = ({ route, navigation }) => {
                 </Text>
                 <Text style={styles.reminderSubText}>Notification push programmée sur cet appareil</Text>
               </View>
-              <TouchableOpacity
-                onPress={async () => {
-                  await updateTask(task.id, { reminderDate: null });
-                }}
-              >
-                <Ionicons name="close-circle" size={20} color="#DC2626" />
-              </TouchableOpacity>
+              {isCreator && (
+                <TouchableOpacity
+                  onPress={async () => {
+                    await updateTask(task.id, { reminderDate: null });
+                  }}
+                >
+                  <Ionicons name="close-circle" size={20} color="#DC2626" />
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             <Text style={styles.cardEmptyItalicText}>
-              Aucun rappel programmé. Définissez une date et une heure de notification.
+              {isCreator
+                ? 'Aucun rappel programmé. Définissez une date et une heure de notification.'
+                : 'Aucun rappel programmé pour cette tâche.'}
             </Text>
           )}
 
-          {/* Bouton de test direct de la notification */}
-          <TouchableOpacity
-            style={styles.testNotificationBtn}
-            onPress={async () => {
-              await notificationService.triggerTestReminder(task.title, 3);
-              if (Platform.OS === 'web') {
-                // géré dans triggerTestReminder
-              } else {
-                Alert.alert('Rappel lancé', 'La notification de rappel sonnera dans 3 secondes !');
-              }
-            }}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="notifications-active" size={16} color="#D97706" style={{ marginRight: 6 }} />
-            <Text style={styles.testNotificationBtnText}>Tester la notification de rappel (3s)</Text>
-          </TouchableOpacity>
+          {/* Bouton de test direct de la notification : visible seulement pour créateur et invités */}
+          {!isVisitor && task.reminderDate && (
+            <TouchableOpacity
+              style={styles.testNotificationBtn}
+              onPress={async () => {
+                await notificationService.triggerTestReminder(task.title, 3);
+                if (Platform.OS === 'web') {
+                  // géré dans triggerTestReminder
+                } else {
+                  Alert.alert('Rappel lancé', 'La notification de rappel sonnera dans 3 secondes !');
+                }
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="notifications-active" size={16} color="#D97706" style={{ marginRight: 6 }} />
+              <Text style={styles.testNotificationBtnText}>Tester la notification de rappel (3s)</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* ======================================================== */}
@@ -893,7 +954,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
             </View>
           ))}
 
-          {/* Saisie commentaire : réservée au créateur et aux invités */}
+          {/* Saisie commentaire : réservée au créateur et aux invités assignés */}
           {canComment ? (
             <View style={styles.commentInputRow}>
               <TextInput
@@ -916,10 +977,10 @@ export const TaskDetailScreen = ({ route, navigation }) => {
               <Ionicons name="lock-closed" size={20} color="#64748B" />
               <View style={{ flex: 1, marginLeft: 8 }}>
                 <Text style={[styles.restrictedTitle, { color: '#334155' }]}>
-                  Discussion réservée aux invités
+                  Discussion réservée aux membres assignés
                 </Text>
                 <Text style={[styles.restrictedText, { color: '#64748B' }]}>
-                  Vous n'êtes pas invité à cette tâche par {task.author}. Vous pouvez seulement la consulter (les commentaires et modifications vous sont désactivés).
+                  Vous n'êtes pas assigné à cette tâche par {task.author}. Vous pouvez seulement la consulter (les commentaires et modifications vous sont désactivés).
                 </Text>
               </View>
             </View>
@@ -927,34 +988,32 @@ export const TaskDetailScreen = ({ route, navigation }) => {
         </View>
 
         {/* ======================================================== */}
-        {/* BOUTON MODIFIER EN BAS (Comme sur la capture)            */}
+        {/* BOUTON MODIFIER EN BAS (ADAPTÉ AU RÔLE DE L'UTILISATEUR) */}
         {/* ======================================================== */}
-        <TouchableOpacity
-          style={[
-            styles.bottomModifyButton,
-            !isCreator && styles.bottomModifyButtonDisabled,
-          ]}
-          onPress={() => {
-            if (!isCreator) {
-              const msg = `Modification refusée : Seul le créateur de cette tâche (${task.author}) a le droit de la modifier. Vous êtes en mode consultation.`;
-              if (Platform.OS === 'web') window.alert(msg);
-              else Alert.alert('Modification refusée', msg);
-              return;
-            }
-            navigation.navigate('TaskForm', { mode: 'edit', taskId: task.id });
-          }}
-          activeOpacity={0.85}
-        >
-          <Ionicons
-            name={isCreator ? 'create-outline' : 'lock-closed'}
-            size={18}
-            color="#FFFFFF"
-            style={{ marginRight: 8 }}
-          />
-          <Text style={styles.bottomModifyButtonText}>
-            {isCreator ? 'Modifier la tâche' : `Consultation seule (Créée par ${task.author})`}
-          </Text>
-        </TouchableOpacity>
+        {isCreator ? (
+          <TouchableOpacity
+            style={styles.bottomModifyButton}
+            onPress={() => navigation.navigate('TaskForm', { mode: 'edit', taskId: task.id })}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="create-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+            <Text style={styles.bottomModifyButtonText}>Modifier la tâche</Text>
+          </TouchableOpacity>
+        ) : isInvited ? (
+          <View style={[styles.bottomModifyButton, styles.bottomCollaboratorBadge]}>
+            <Ionicons name="chatbubbles" size={18} color="#0284C7" style={{ marginRight: 8 }} />
+            <Text style={[styles.bottomModifyButtonText, { color: '#0284C7' }]}>
+              Collaborateur assigné (Discussion active • Fichiers protégés)
+            </Text>
+          </View>
+        ) : (
+          <View style={[styles.bottomModifyButton, styles.bottomModifyButtonDisabled]}>
+            <Ionicons name="lock-closed" size={18} color="#64748B" style={{ marginRight: 8 }} />
+            <Text style={[styles.bottomModifyButtonText, { color: '#64748B' }]}>
+              Mode consultation seule (Non assigné)
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
       {/* Modal Carte OpenStreetMap */}
@@ -962,13 +1021,16 @@ export const TaskDetailScreen = ({ route, navigation }) => {
         visible={showMapModal}
         onClose={() => setShowMapModal(false)}
         initialLocation={task.locationReminder}
+        readOnly={!isCreator}
         onSelectLocation={async (loc) => {
-          await updateTask(task.id, { locationReminder: loc });
+          if (isCreator) {
+            await updateTask(task.id, { locationReminder: loc });
+          }
           setShowMapModal(false);
         }}
       />
 
-      {/* Modal Réglages Rapides (Roue dentée ⚙️) */}
+      {/* Modal Réglages Rapides (Roue dentée ⚙️) : créateur uniquement */}
       <Modal visible={showSettingsModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
@@ -1088,13 +1150,13 @@ export const TaskDetailScreen = ({ route, navigation }) => {
                 if (Platform.OS === 'web') {
                   // Handled
                 } else {
-                  Alert.alert('Rappel lancé', 'La notification sonnera dans 5 secondes !');
+                  Alert.alert('Rappel lancé', 'Notification de rappel dans 5 secondes.');
                 }
               }}
             >
-              <Ionicons name="flash-outline" size={20} color="#B45309" />
+              <Ionicons name="flash-outline" size={20} color="#D97706" />
               <Text style={[styles.modalActionText, { color: '#B45309', fontWeight: '700' }]}>
-                Tester en direct (dans 5 secondes)
+                Tester en direct (dans 5s)
               </Text>
             </TouchableOpacity>
 
@@ -1102,7 +1164,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
               style={styles.modalCloseBtn}
               onPress={() => setShowReminderModal(false)}
             >
-              <Text style={styles.modalCloseBtnText}>Fermer</Text>
+              <Text style={styles.modalCloseBtnText}>Annuler</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1118,19 +1180,21 @@ const styles = StyleSheet.create({
   },
   topBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
+    backgroundColor: '#FFFFFF',
   },
   backButton: {
-    padding: 2,
+    padding: 4,
+    marginLeft: -4,
   },
   topBarTitle: {
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '700',
     color: '#0F172A',
   },
   syncCircleBtn: {
@@ -1143,27 +1207,29 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#FFFFFF',
     elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1,
   },
   container: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 40,
+    padding: 16,
     backgroundColor: '#F8FAFC',
+    paddingBottom: 30,
   },
-
-  // 1. CARTE TÂCHE PRINCIPALE
   mainTaskCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    marginBottom: 14,
     flexDirection: 'row',
     position: 'relative',
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
     elevation: 2,
   },
   accentLeftBar: {
@@ -1174,19 +1240,19 @@ const styles = StyleSheet.create({
   taskCardBody: {
     flex: 1,
     padding: 16,
-    paddingRight: 50, // Laisse de l'espace pour le bouton roue dentée flottant
   },
   taskTitle: {
     fontSize: 22,
     fontWeight: '800',
     color: '#0F172A',
     marginBottom: 8,
+    paddingRight: 40,
   },
   badgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   badge: {
     paddingHorizontal: 12,
@@ -1216,47 +1282,58 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#94A3B8',
   },
+  userRoleOnTaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  userRoleOnTaskText: {
+    fontSize: 11,
+    color: '#64748B',
+  },
   gearFloatingBtn: {
     position: 'absolute',
-    right: 12,
-    bottom: 12,
+    right: 14,
+    top: 60,
     width: 44,
     height: 44,
     borderRadius: 22,
     backgroundColor: '#0284C7',
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
     elevation: 4,
     shadowColor: '#0284C7',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
-    shadowRadius: 4,
+    shadowRadius: 5,
   },
-
-  // 2. CARTES DE SECTIONS
   sectionCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    marginBottom: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
     elevation: 1,
   },
   cardHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   cardTitleWithIcon: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   cardSectionTitle: {
     fontSize: 17,
@@ -1265,7 +1342,8 @@ const styles = StyleSheet.create({
   },
   headerPillButtons: {
     flexDirection: 'row',
-    gap: 6,
+    alignItems: 'center',
+    gap: 8,
   },
   pillActionBtn: {
     flexDirection: 'row',
@@ -1277,30 +1355,43 @@ const styles = StyleSheet.create({
   },
   pillActionBtnText: {
     color: '#FFFFFF',
-    fontWeight: '700',
     fontSize: 12,
+    fontWeight: '700',
+  },
+  readOnlyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    gap: 4,
+  },
+  readOnlyBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
   },
   cardEmptyItalicText: {
     fontStyle: 'italic',
     color: '#94A3B8',
     fontSize: 13,
-    marginTop: 4,
+    lineHeight: 18,
   },
-
-  // Pièces jointes éléments
   attachmentItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F8FAFC',
+    padding: 10,
     borderRadius: 10,
-    padding: 8,
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
   attachmentThumb: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 8,
+    backgroundColor: '#E2E8F0',
   },
   attachmentName: {
     fontSize: 13,
@@ -1310,18 +1401,17 @@ const styles = StyleSheet.create({
   attachmentSub: {
     fontSize: 11,
     color: '#64748B',
+    marginTop: 2,
   },
-
-  // Observateurs
   followerInputRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
     marginTop: 10,
     marginBottom: 10,
   },
   followerTextInput: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E2E8F0',
     borderRadius: 10,
@@ -1329,26 +1419,26 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     fontSize: 13,
     color: '#0F172A',
+    backgroundColor: '#FFFFFF',
   },
   addFollowerBtn: {
     backgroundColor: '#0284C7',
     paddingHorizontal: 14,
+    paddingVertical: 9,
     borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   addFollowerBtnText: {
     color: '#FFFFFF',
+    fontSize: 12,
     fontWeight: '700',
-    fontSize: 13,
   },
   roleChipsRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 8,
+    marginBottom: 10,
   },
   roleChip: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
@@ -1356,8 +1446,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   roleChipSelected: {
+    backgroundColor: '#E0F2FE',
     borderColor: '#0284C7',
-    borderWidth: 1.5,
   },
   roleChipText: {
     fontSize: 12,
@@ -1368,48 +1458,72 @@ const styles = StyleSheet.create({
     color: '#0284C7',
     fontWeight: '700',
   },
+  allowedUserChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  allowedUserChipActive: {
+    backgroundColor: '#DCFCE7',
+    borderColor: '#16A34A',
+  },
+  allowedUserChipText: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  allowedUserChipTextActive: {
+    color: '#16A34A',
+    fontWeight: '700',
+  },
   observersChipsList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
     marginTop: 8,
   },
   observerBadgeItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    backgroundColor: '#F0F9FF',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    gap: 6,
   },
   observerBadgeName: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#0F172A',
+    color: '#0369A1',
   },
   roleSubBadge: {
-    backgroundColor: '#E0F2FE',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
     paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 6,
+    paddingVertical: 2,
   },
   roleSubBadgeText: {
-    fontSize: 10,
-    color: '#0284C7',
+    fontSize: 9,
+    color: '#64748B',
     fontWeight: '700',
+    textTransform: 'uppercase',
   },
-
-  // Positions
   locationCapturedBlock: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FEF2F2',
+    padding: 10,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#FECACA',
-    borderRadius: 10,
-    padding: 10,
-    marginTop: 8,
+    marginTop: 6,
   },
   locationNameText: {
     fontSize: 13,
@@ -1423,168 +1537,10 @@ const styles = StyleSheet.create({
   },
   openMapBtn: {
     padding: 6,
-  },
-
-  // Commentaires
-  commentItemBox: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
-    padding: 8,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-  },
-  commentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  commentAuthor: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#0284C7',
-  },
-  commentTime: {
-    fontSize: 10,
-    color: '#94A3B8',
-  },
-  commentText: {
-    fontSize: 13,
-    color: '#334155',
-  },
-  commentInputRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginTop: 8,
-  },
-  commentTextInput: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    fontSize: 12,
-  },
-  commentSendBtn: {
-    backgroundColor: '#0284C7',
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // 6. BOUTON MODIFIER EN BAS
-  bottomModifyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#0284C7',
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginTop: 8,
-    elevation: 2,
-    shadowColor: '#0284C7',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-  },
-  bottomModifyButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  bottomModifyButtonDisabled: {
-    backgroundColor: '#64748B',
-    elevation: 0,
-    shadowOpacity: 0,
-  },
-  userRoleOnTaskRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-  },
-  userRoleOnTaskText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
-  },
-
-  // Modal réglages
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalBox: {
-    width: '100%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-  },
-  modalTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#0F172A',
-    marginBottom: 14,
-  },
-  modalSub: {
-    fontSize: 12,
-    color: '#64748B',
-    marginBottom: 12,
-  },
-  allowedUsersSection: {
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-  },
-  subSectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-  },
-  subSectionTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#0284C7',
-  },
-  allowedUserChipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  allowedUserChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    backgroundColor: '#F8FAFC',
-  },
-  allowedUserChipActive: {
-    backgroundColor: '#E0F2FE',
-    borderColor: '#0284C7',
-  },
-  allowedUserChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
-  },
-  allowedUserChipTextActive: {
-    color: '#0284C7',
-    fontWeight: '700',
   },
   proximityButtonsRow: {
     flexDirection: 'row',
@@ -1596,11 +1552,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F0F9FF',
+    paddingVertical: 8,
+    backgroundColor: '#E0F2FE',
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#BAE6FD',
-    paddingVertical: 8,
-    borderRadius: 8,
   },
   checkProximityBtnText: {
     fontSize: 11,
@@ -1612,11 +1568,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F0FDF4',
+    paddingVertical: 8,
+    backgroundColor: '#DCFCE7',
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#BBF7D0',
-    paddingVertical: 8,
-    borderRadius: 8,
   },
   simulateArrivalBtnText: {
     fontSize: 11,
@@ -1627,19 +1583,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FEF3C7',
+    padding: 10,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#FDE68A',
-    borderRadius: 10,
-    padding: 10,
     marginTop: 6,
   },
   reminderDateText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: '#92400E',
   },
   reminderSubText: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#B45309',
     marginTop: 2,
   },
@@ -1647,81 +1603,128 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 9,
     backgroundColor: '#FFFBEB',
-    borderWidth: 1,
-    borderColor: '#FCD34D',
-    paddingVertical: 8,
     borderRadius: 8,
-    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    marginTop: 10,
   },
   testNotificationBtnText: {
     fontSize: 12,
     fontWeight: '700',
     color: '#D97706',
   },
+  commentItemBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  commentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  commentAuthor: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  commentTime: {
+    fontSize: 10,
+    color: '#94A3B8',
+  },
+  commentText: {
+    fontSize: 13,
+    color: '#334155',
+    lineHeight: 18,
+  },
+  commentInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+  },
+  commentTextInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: '#0F172A',
+    backgroundColor: '#FFFFFF',
+  },
+  commentSendBtn: {
+    backgroundColor: '#0284C7',
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   restrictedCommentBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1,
-    borderColor: '#FECACA',
+    backgroundColor: '#F1F5F9',
+    padding: 10,
     borderRadius: 10,
-    padding: 12,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
     marginTop: 8,
   },
   restrictedTitle: {
     fontSize: 12,
-    fontWeight: '800',
-    color: '#DC2626',
+    fontWeight: '700',
     marginBottom: 2,
   },
   restrictedText: {
     fontSize: 11,
-    color: '#991B1B',
     lineHeight: 15,
   },
-  quickSwitchBtn: {
-    backgroundColor: '#DC2626',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    marginLeft: 6,
-  },
-  quickSwitchBtnText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  modalAction: {
+  bottomModifyButton: {
+    backgroundColor: '#0284C7',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 6,
+    marginBottom: 20,
+    elevation: 2,
+    shadowColor: '#0284C7',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
   },
-  modalActionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#0F172A',
+  bottomCollaboratorBadge: {
+    backgroundColor: '#E0F2FE',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    elevation: 0,
+    shadowOpacity: 0,
   },
-  modalCloseBtn: {
-    marginTop: 14,
-    paddingVertical: 10,
-    alignItems: 'center',
+  bottomModifyButtonDisabled: {
     backgroundColor: '#F1F5F9',
-    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    elevation: 0,
+    shadowOpacity: 0,
   },
-  modalCloseBtnText: {
-    fontSize: 13,
+  bottomModifyButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '700',
-    color: '#64748B',
   },
-
   notFoundContainer: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
   notFoundText: {
     fontSize: 16,
@@ -1731,12 +1734,65 @@ const styles = StyleSheet.create({
   backButtonSimple: {
     backgroundColor: '#0284C7',
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 8,
   },
   backButtonSimpleText: {
     color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalBox: {
+    width: '90%',
+    maxWidth: 360,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 18,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 6,
+  },
+  modalSub: {
+    fontSize: 12,
+    color: '#64748B',
+    marginBottom: 12,
+  },
+  modalAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    marginBottom: 6,
+  },
+  modalActionText: {
+    fontSize: 13,
     fontWeight: '600',
+    color: '#0F172A',
+  },
+  modalCloseBtn: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    marginTop: 6,
+  },
+  modalCloseBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#64748B',
   },
 });
 
