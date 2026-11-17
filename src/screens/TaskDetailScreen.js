@@ -102,7 +102,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
   const observers = task.observers || [];
   const comments = task.comments || [];
 
-  // --- SYSTÈME DE PERMISSIONS STRICT ---
+  // --- SYSTÈME DE PERMISSIONS STRICT (3 NIVEAUX) ---
   // 1. Est le créateur / auteur de la tâche (Possède tous les droits réels) :
   const isCreator = Boolean(
     task.author &&
@@ -111,7 +111,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
       task.author.toLowerCase() === currentUser.name.toLowerCase()
   );
 
-  // 2. Est un collaborateur invité / assigné :
+  // 2. Est un collaborateur invité / assigné à cette tâche :
   const isInvited = Boolean(
     currentUser &&
       currentUser.name &&
@@ -122,6 +122,9 @@ export const TaskDetailScreen = ({ route, navigation }) => {
 
   // 3. Simple visiteur non-assigné :
   const isVisitor = !isCreator && !isInvited;
+
+  // L'auteur et les collaborateurs assignés ont le droit de participer à la discussion :
+  const canComment = isCreator || isInvited;
 
   // Helper pour afficher le refus d'autorisation
   const notifyPermissionDenied = (actionName, requiredRole = `le créateur (${task.author})`) => {
@@ -309,7 +312,7 @@ export const TaskDetailScreen = ({ route, navigation }) => {
     await updateTask(task.id, { locationReminder: null });
   };
 
-  // --- VÉRIFICATION & SIMULATION DE PROXIMITÉ GPS ---
+  // --- VÉRIFICATION & SIMULATION DE PROXIMITÉ GPS (POUR CRÉATEUR ET ASSIGNÉS) ---
   const handleCheckProximity = async () => {
     if (!task.locationReminder) return;
     setCheckingProximity(true);
@@ -831,33 +834,35 @@ export const TaskDetailScreen = ({ route, navigation }) => {
                 </TouchableOpacity>
               </View>
 
-              {/* Boutons de test de détection de proximité */}
-              <View style={styles.proximityButtonsRow}>
-                <TouchableOpacity
-                  style={styles.checkProximityBtn}
-                  onPress={handleCheckProximity}
-                  disabled={checkingProximity}
-                  activeOpacity={0.8}
-                >
-                  {checkingProximity ? (
-                    <ActivityIndicator size="small" color="#0284C7" />
-                  ) : (
-                    <>
-                      <Ionicons name="radio" size={14} color="#0284C7" style={{ marginRight: 4 }} />
-                      <Text style={styles.checkProximityBtnText}>Vérifier GPS</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+              {/* Boutons de test de détection de proximité : accessibles au créateur et aux assignés */}
+              {!isVisitor && (
+                <View style={styles.proximityButtonsRow}>
+                  <TouchableOpacity
+                    style={styles.checkProximityBtn}
+                    onPress={handleCheckProximity}
+                    disabled={checkingProximity}
+                    activeOpacity={0.8}
+                  >
+                    {checkingProximity ? (
+                      <ActivityIndicator size="small" color="#0284C7" />
+                    ) : (
+                      <>
+                        <Ionicons name="radio" size={14} color="#0284C7" style={{ marginRight: 4 }} />
+                        <Text style={styles.checkProximityBtnText}>Vérifier GPS</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.simulateArrivalBtn}
-                  onPress={handleSimulateArrival}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="notifications-outline" size={14} color="#16A34A" style={{ marginRight: 4 }} />
-                  <Text style={styles.simulateArrivalBtnText}>Simuler arrivée (Alerte)</Text>
-                </TouchableOpacity>
-              </View>
+                  <TouchableOpacity
+                    style={styles.simulateArrivalBtn}
+                    onPress={handleSimulateArrival}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="notifications-outline" size={14} color="#16A34A" style={{ marginRight: 4 }} />
+                    <Text style={styles.simulateArrivalBtnText}>Simuler arrivée (Alerte)</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           )}
         </View>
@@ -942,28 +947,36 @@ export const TaskDetailScreen = ({ route, navigation }) => {
             </View>
           ))}
 
-          {/* Saisie commentaire */}
-          <View style={styles.commentInputRow}>
-            <TextInput
-              style={styles.commentTextInput}
-              placeholder={`Commenter en tant que ${currentUser.name}...`}
-              placeholderTextColor="#94A3B8"
-              value={commentText}
-              onChangeText={setCommentText}
-            />
-            <TouchableOpacity
-              style={styles.commentSendBtn}
-              onPress={handlePostComment}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="send" size={16} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-
-          {isVisitor && (
-            <Text style={{ fontSize: 11, color: '#94A3B8', marginTop: 4, fontStyle: 'italic' }}>
-              ℹ️ Consultation seule : seuls les membres assignés peuvent publier des commentaires.
-            </Text>
+          {/* Saisie commentaire : OUVERTE pour créateur et assignés, VERROUILLÉE pour non-assignés */}
+          {canComment ? (
+            <View style={styles.commentInputRow}>
+              <TextInput
+                style={styles.commentTextInput}
+                placeholder={`Commenter en tant que ${currentUser.name}...`}
+                placeholderTextColor="#94A3B8"
+                value={commentText}
+                onChangeText={setCommentText}
+              />
+              <TouchableOpacity
+                style={styles.commentSendBtn}
+                onPress={handlePostComment}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="send" size={16} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.restrictedCommentBox}>
+              <Ionicons name="lock-closed" size={20} color="#64748B" />
+              <View style={{ flex: 1, marginLeft: 8 }}>
+                <Text style={[styles.restrictedTitle, { color: '#334155' }]}>
+                  Discussion réservée aux membres assignés
+                </Text>
+                <Text style={[styles.restrictedText, { color: '#64748B' }]}>
+                  Vous ne faites pas partie des collaborateurs assignés à cette tâche par {task.author}. La discussion est verrouillée en mode consultation.
+                </Text>
+              </View>
+            </View>
           )}
         </View>
 
@@ -1627,6 +1640,25 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  restrictedCommentBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    marginTop: 10,
+  },
+  restrictedTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  restrictedText: {
+    fontSize: 11,
+    lineHeight: 15,
   },
   bottomModifyButton: {
     backgroundColor: '#0284C7',
