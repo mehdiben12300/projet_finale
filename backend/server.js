@@ -202,7 +202,7 @@ app.get('/api/tasks', (req, res) => {
   res.json(tasks);
 });
 
-// 2. Obtenir une tâche par son ID
+// 2. Obtenir une tâ  che par son ID
 app.get('/api/tasks/:id', (req, res) => {
   const tasks = getTasks();
   const task = tasks.find((t) => String(t.id) === String(req.params.id));
